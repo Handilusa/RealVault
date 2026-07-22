@@ -14,3 +14,8 @@ dist
 .DS_Store
 *.log
 
+# Internal dev files
+RealVault_prompt_plan.md
+frontend/AGENTS.md
+frontend/CLAUDE.md
+
