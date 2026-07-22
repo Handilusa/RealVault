@@ -1,0 +1,112 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "timestamp": "2026-07-22T14:19:00.212Z",
+  "deployer": "0x1420cF8Bb9D92C3fDb674ECc5A57295c59078fDA",
+  "fundVault": "0x6173B5846d882E7A74904EAd017F425C24147F93",
+  "gasData": {
+    "grant": [
+      {
+        "investors": 1,
+        "gas": 164108
+      },
+      {
+        "investors": 2,
+        "gas": 181709
+      },
+      {
+        "investors": 3,
+        "gas": 216410
+      },
+      {
+        "investors": 4,
+        "gas": 251111
+      },
+      {
+        "investors": 5,
+        "gas": 285813
+      },
+      {
+        "investors": 6,
+        "gas": 320502
+      },
+      {
+        "investors": 7,
+        "gas": 355215
+      },
+      {
+        "investors": 8,
+        "gas": 389918
+      }
+    ],
+    "revoke": [
+      {
+        "investors": 1,
+        "gas": 181118
+      },
+      {
+        "investors": 2,
+        "gas": 315011
+      },
+      {
+        "investors": 3,
+        "gas": 448904
+      },
+      {
+        "investors": 4,
+        "gas": 582797
+      },
+      {
+        "investors": 5,
+        "gas": 716691
+      },
+      {
+        "investors": 6,
+        "gas": 850572
+      },
+      {
+        "investors": 7,
+        "gas": 984477
+      },
+      {
+        "investors": 8,
+        "gas": 1118373
+      }
+    ],
+    "aggregate": [
+      {
+        "investors": 1,
+        "gas": 142451
+      },
+      {
+        "investors": 2,
+        "gas": 151793
+      },
+      {
+        "investors": 3,
+        "gas": 195336
+      },
+      {
+        "investors": 4,
+        "gas": 238878
+      },
+      {
+        "investors": 5,
+        "gas": 282420
+      },
+      {
+        "investors": 6,
+        "gas": 325963
+      },
+      {
+        "investors": 7,
+        "gas": 369505
+      },
+      {
+        "investors": 8,
+        "gas": 413049
+      }
+    ]
+  },
+  "handlePrefix": "0x0000aa36a7 (ETH Sepolia Chain ID in handle)"
+}

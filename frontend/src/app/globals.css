@@ -1,0 +1,670 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   REALVAULT — INSTITUTIONAL LIGHT THEME
+   Clean zinc whites, indigo accent, editorial precision.
+   Inspired by Mercury, Linear, Vercel dashboards.
+   
+   Signature element: the redaction-bar reveal — the single
+   memorable interaction that embodies confidential disclosure.
+   Everything else stays quiet and disciplined around it.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Surface System (Light Zinc) ───────────────────────── */
+  --bg-base: #FAFAFA;
+  --bg-surface: #FFFFFF;
+  --bg-surface-hover: #F4F4F5;
+  --bg-inset: #F0F0F3;
+  --bg-elevated: #FFFFFF;
+
+  /* ── Typography Inks ───────────────────────────────────── */
+  --ink-primary: #09090B;
+  --ink-secondary: #71717A;
+  --ink-muted: #A1A1AA;
+  --ink-faint: #D4D4D8;
+
+  /* ── Indigo Accent (Single, Confident) ─────────────────── */
+  --accent: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-subtle: rgba(79, 70, 229, 0.06);
+  --accent-border: rgba(79, 70, 229, 0.15);
+  --accent-text: #4338CA;
+
+  /* ── Status Inks (Desaturated, Not Neon) ───────────────── */
+  --state-success: #16A34A;
+  --state-success-bg: rgba(22, 163, 74, 0.06);
+  --state-success-border: rgba(22, 163, 74, 0.15);
+  --state-destructive: #DC2626;
+  --state-destructive-bg: rgba(220, 38, 38, 0.06);
+  --state-destructive-border: rgba(220, 38, 38, 0.15);
+
+  /* ── Borders (Zinc Hairlines) ──────────────────────────── */
+  --border-default: #E4E4E7;
+  --border-subtle: #F4F4F5;
+  --border-strong: #D4D4D8;
+
+  /* ── Shadows (Layered, Not Blurry Blobs) ───────────────── */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03);
+  --shadow-hover: 0 8px 24px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
+
+  /* ── Radii ─────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ── Motion ─────────────────────────────────────────────── */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+}
+
+/* ─── Base Reset & Typography ─────────────────────────────── */
+body {
+  background-color: var(--bg-base);
+  color: var(--ink-primary);
+  font-family: var(--font-body), 'IBM Plex Sans', -apple-system, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display), 'Fraunces', serif;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.font-data, .mono-code {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ─── Vault Card ──────────────────────────────────────────── */
+.vault-card, .glass-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+
+.vault-card-hover {
+  transition: box-shadow var(--duration-normal) var(--ease-out-expo),
+              border-color var(--duration-normal) var(--ease-out-expo),
+              transform var(--duration-normal) var(--ease-out-expo);
+}
+
+.vault-card-hover:hover {
+  box-shadow: var(--shadow-hover);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+/* ─── Buttons ─────────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--accent);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.2);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--bg-surface);
+  color: var(--ink-primary);
+  font-weight: 500;
+  font-size: 0.875rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-destructive {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--state-destructive-bg);
+  color: var(--state-destructive);
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--state-destructive-border);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out-expo);
+}
+
+.btn-destructive:hover {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: var(--state-destructive);
+}
+
+.btn-destructive:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Badges ──────────────────────────────────────────────── */
+.badge-testnet, .badge-sepolia {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--state-success-bg);
+  border: 1px solid var(--state-success-border);
+  color: var(--state-success);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: var(--font-mono), monospace;
+}
+
+.badge-fhe {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-text);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: var(--font-mono), monospace;
+}
+
+.badge-decrypted {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--state-success-bg);
+  border: 1px solid var(--state-success-border);
+  color: var(--state-success);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge-encrypted {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  color: var(--ink-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* ─── Redaction Bar (Encrypted Position Pill) ─────────────── */
+.redaction-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  user-select: none;
+  transition: all 0.3s var(--ease-out-expo);
+}
+
+.redaction-bar.revealed {
+  color: var(--state-success);
+  background: var(--state-success-bg);
+  border-color: var(--state-success-border);
+  font-weight: 600;
+  letter-spacing: normal;
+}
+
+/* ─── Stepper ─────────────────────────────────────────────── */
+.stepper-container {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0.75rem 1.5rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.stepper-container::-webkit-scrollbar {
+  display: none;
+}
+
+.stepper-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--duration-fast);
+  flex-shrink: 0;
+}
+
+.stepper-item:hover {
+  color: var(--ink-primary);
+  background: var(--bg-surface-hover);
+}
+
+.stepper-item.active {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.stepper-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: var(--bg-inset);
+  color: var(--ink-secondary);
+  flex-shrink: 0;
+  font-family: var(--font-mono), monospace;
+  border: 1px solid var(--border-default);
+}
+
+.stepper-item.active .stepper-number {
+  background: var(--accent);
+  color: #FFFFFF;
+  border-color: var(--accent);
+}
+
+.stepper-separator {
+  width: 1.5rem;
+  height: 1px;
+  background: var(--border-default);
+  flex-shrink: 0;
+}
+
+/* ─── Role Banner ─────────────────────────────────────────── */
+.role-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  color: var(--ink-secondary);
+}
+
+.role-tag {
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.75rem;
+  font-family: var(--font-mono), monospace;
+}
+
+.role-tag-investor {
+  background: var(--state-success-bg);
+  color: var(--state-success);
+  border: 1px solid var(--state-success-border);
+}
+
+.role-tag-auditor {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-border);
+}
+
+.role-tag-public {
+  background: var(--bg-surface);
+  color: var(--ink-secondary);
+  border: 1px solid var(--border-default);
+}
+
+/* ─── Tooltip ─────────────────────────────────────────────── */
+.tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+  border-bottom: 1px dotted var(--ink-muted);
+  text-decoration: none;
+}
+
+.tooltip-content {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.625rem 0.875rem;
+  background: var(--ink-primary);
+  border: 1px solid var(--ink-primary);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #FFFFFF;
+  white-space: normal;
+  min-width: 220px;
+  max-width: 300px;
+  line-height: 1.5;
+  z-index: 100;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--duration-fast), visibility var(--duration-fast);
+  pointer-events: none;
+}
+
+.tooltip-trigger:hover .tooltip-content,
+.tooltip-trigger:focus .tooltip-content {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ─── Modal ───────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 9, 11, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 1.5rem;
+}
+
+.modal-content {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  max-width: 30rem;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+}
+
+/* ─── Form Inputs ─────────────────────────────────────────── */
+input[type="text"],
+input[type="number"] {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0.625rem 0.875rem;
+  color: var(--ink-primary);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--border-default);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+/* ─── Allocation Bar ──────────────────────────────────────── */
+.allocation-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-inset);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+}
+
+.allocation-segment-a {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--duration-normal) var(--ease-out-expo);
+}
+
+.allocation-segment-b {
+  height: 100%;
+  background: var(--ink-muted);
+  transition: width var(--duration-normal) var(--ease-out-expo);
+}
+
+/* ─── Pulse Dot ───────────────────────────────────────────── */
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--state-success);
+}
+
+/* ─── Gas Chart ───────────────────────────────────────────── */
+.gas-chart-container {
+  position: relative;
+}
+
+.gas-chart-tooltip {
+  position: absolute;
+  background: var(--ink-primary);
+  color: #FFFFFF;
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ─── GSAP Entry Hooks ────────────────────────────────────── */
+.gsap-slide-up {
+  opacity: 0;
+  transform: translateY(20px);
+  will-change: opacity, transform;
+}
+
+/* ─── Section Dividers ────────────────────────────────────── */
+.section-header {
+  padding-bottom: 1rem;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* ─── Table Enhancements ──────────────────────────────────── */
+.data-table {
+  width: 100%;
+  text-align: left;
+  font-size: 0.8125rem;
+}
+
+.data-table thead {
+  background: var(--bg-inset);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.data-table thead th {
+  padding: 0.875rem 1rem;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-secondary);
+  font-family: var(--font-mono), monospace;
+}
+
+.data-table tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--duration-fast);
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-surface-hover);
+}
+
+.data-table tbody td {
+  padding: 0.875rem 1rem;
+}
+
+/* ─── Inset Panel (for code/handle displays) ──────────────── */
+.inset-panel {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-inset);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.75rem;
+  color: var(--ink-secondary);
+  word-break: break-all;
+}
+
+@media (min-width: 768px) {
+  .stepper-container {
+    position: sticky;
+    top: 57px;
+    z-index: 40;
+  }
+}
+
+/* ─── Tab Switcher Panel Animation ─────────────────────── */
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-panel-animate {
+  animation: tabFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ─── Scroll behavior ─────────────────────────────────────── */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gsap-slide-up {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ─── Print Styles (Certificate Export) ──────────────────── */
+@media print {
+  /* The JS handler creates #print-certificate-container as the sole visible element */
+  #print-certificate-container {
+    width: 100% !important;
+    background: white !important;
+  }
+
+  /* Ensure dark header banner colors print correctly */
+  #print-certificate-container .bg-zinc-900 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
+
+  /* Ensure badge colors print */
+  #print-certificate-container [class*="bg-emerald"],
+  #print-certificate-container [class*="bg-indigo"] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
+
+  /* Force scrollable areas to show all content */
+  #print-certificate-container [class*="overflow"] {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+}
+

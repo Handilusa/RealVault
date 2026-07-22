@@ -1,0 +1,16 @@
+node_modules
+.next
+/frontend/.next
+/frontend/out
+.env
+.env*.local
+coverage
+coverage.json
+typechain
+typechain-types
+cache
+artifacts
+dist
+.DS_Store
+*.log
+

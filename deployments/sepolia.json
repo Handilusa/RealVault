@@ -1,0 +1,14 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "deployer": "0x1420cF8Bb9D92C3fDb674ECc5A57295c59078fDA",
+  "timestamp": "2026-07-22T14:09:49.295Z",
+  "contracts": {
+    "MockUSDC": "0x181680C8F6975Bbd339e4F7eFC9cbFDaf4844817",
+    "WrappedUSDC": "0x81E99DD3F0F8a2637fD3dc14cedCa58312C06F7A",
+    "FundVault": "0x6173B5846d882E7A74904EAd017F425C24147F93",
+    "NAVAggregator": "0x6A40DC170444B7a66a508ce56Fd2cA2C961A5683",
+    "DisclosureManager": "0x9B1777491F7ab00C9de386D20d450Ff3f587f28a",
+    "RebalancerAgent": "0x8b0C3D4922Da61f393c3190fE569f52BCE03a6DD"
+  }
+}
