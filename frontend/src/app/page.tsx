@@ -109,19 +109,48 @@ export default function RealVaultApp() {
   // Personal LP portfolio allocation preference (per-user)
   const [personalAllocRatio, setPersonalAllocRatio] = useState<number>(50);
 
-  // Hydrate shadow balance & personal allocation preference from localStorage on mount
+  // Reset sandbox state and decryption immediately whenever connected wallet (account) changes
   useEffect(() => {
-    if (!account) return;
-    const key = `rv_shadow_${account.toLowerCase()}`;
-    const stored = localStorage.getItem(key);
-    if (stored) {
-      setSandboxState((prev) => ({ ...prev, shadowBalance: parseFloat(stored) }));
+    if (!account) {
+      setSandboxState({
+        depositAmount: "100",
+        isProcessing: false,
+        isMinting: false,
+        mUsdcBalance: "0",
+        positionHandle: null,
+        isInvestorOnChain: false,
+        isDecrypted: false,
+        decryptedBalance: null,
+        shadowBalance: 0,
+        statusMsg: null,
+        txHash: null,
+        loaded: true,
+      });
+      setPersonalAllocRatio(50);
+      return;
     }
+
+    // Lock decryption for new wallet and load wallet-specific shadow balance & allocation
+    const shadowKey = `rv_shadow_${account.toLowerCase()}`;
+    const storedShadow = localStorage.getItem(shadowKey);
+    const shadowVal = storedShadow ? parseFloat(storedShadow) : 0;
+
+    setSandboxState((prev) => ({
+      ...prev,
+      isDecrypted: false,
+      decryptedBalance: null,
+      shadowBalance: shadowVal,
+      positionHandle: null,
+      statusMsg: null,
+      txHash: null,
+    }));
 
     const allocKey = `rv_personal_alloc_${account.toLowerCase()}`;
     const storedAlloc = localStorage.getItem(allocKey);
     if (storedAlloc) {
       setPersonalAllocRatio(parseInt(storedAlloc, 10));
+    } else {
+      setPersonalAllocRatio(50);
     }
   }, [account]);
 
@@ -252,10 +281,15 @@ export default function RealVaultApp() {
         usdc.balanceOf(userAddr),
       ]);
 
+      const shadowKey = `rv_shadow_${userAddr.toLowerCase()}`;
+      const storedShadow = localStorage.getItem(shadowKey);
+      const shadowVal = storedShadow ? parseFloat(storedShadow) : 0;
+
       setSandboxState((prev) => ({
         ...prev,
         isInvestorOnChain: isInv as boolean,
         positionHandle: toHexHandle(rawHandle),
+        shadowBalance: shadowVal,
         mUsdcBalance: ethers.formatUnits(bal as bigint, 18),
         loaded: true,
       }));

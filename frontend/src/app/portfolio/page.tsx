@@ -80,10 +80,16 @@ export default function PersonalPortfolioPage() {
   }, [account]);
 
   useEffect(() => {
+    if (!account) {
+      setWalletBalance("0");
+      setPositionHandle(null);
+      setIsAuditorApproved(false);
+      return;
+    }
     fetchUserData();
     const interval = setInterval(fetchUserData, 12000);
     return () => clearInterval(interval);
-  }, [fetchUserData]);
+  }, [account, fetchUserData]);
 
   // Mint Testnet mUSDC
   const handleMint = async () => {

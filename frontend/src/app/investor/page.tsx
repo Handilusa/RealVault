@@ -38,11 +38,17 @@ export default function InvestorPortalPage() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
-  // Hydrate shadow balance from localStorage
+  // Hydrate shadow balance from localStorage with strict account reset
   useEffect(() => {
-    if (!account) return;
+    if (!account) {
+      setShadowBalance(0);
+      setPositionHandle(null);
+      setIsInvestor(false);
+      setWalletBalance("0");
+      return;
+    }
     const stored = localStorage.getItem(`rv_shadow_${account.toLowerCase()}`);
-    if (stored) setShadowBalance(parseFloat(stored));
+    setShadowBalance(stored ? parseFloat(stored) : 0);
   }, [account]);
 
   const fetchData = useCallback(async () => {
