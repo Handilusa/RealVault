@@ -1116,7 +1116,10 @@ export default function RealVaultApp() {
             </div>
 
             <div className="vault-card p-5 space-y-1.5">
-              <span className="text-xs font-mono uppercase text-zinc-400 tracking-wider">On-Chain Policy</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono uppercase text-zinc-400 tracking-wider">Pooled Asset Strategy</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 font-semibold">Fund Admin</span>
+              </div>
               <div className="text-2xl font-bold font-data text-zinc-900">
                 {allocAPct > 0 ? `${allocAPct}/${allocBPct}` : "—"}
               </div>
@@ -1279,6 +1282,40 @@ export default function RealVaultApp() {
             </div>
           </div>
         </section>
+
+        {/* Role Separation & Per-LP Privacy Architecture Notice */}
+        <div className="p-5 rounded-xl bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-zinc-50 border border-indigo-100/90 shadow-sm space-y-3 gsap-slide-up">
+          <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-indigo-900 text-sm">
+            <span className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+              RealVault Protocol Architecture: Roles &amp; Per-LP Confidentiality
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-bold font-mono">Macro Strategy (Fund Admin)</span>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-bold font-mono">100% LP Isolation</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-sans text-zinc-600 text-xs leading-relaxed">
+            <div className="p-3.5 bg-white/80 rounded-lg border border-indigo-100 space-y-1">
+              <div className="font-bold text-indigo-950 font-mono text-[11px] flex items-center gap-1.5">
+                <span>🏢 FUND MANAGER / ADMIN</span>
+                <span className="text-[10px] text-indigo-600 font-normal">(Pooled Vault Macro Strategy)</span>
+              </div>
+              <p>
+                Sets the <strong>Pooled Asset Policy (75/25 Split)</strong> and executes confidential rebalancing for the aggregate fund pool. Individual LP position sizes remain completely hidden inside iExec Nox TEE enclaves.
+              </p>
+            </div>
+            <div className="p-3.5 bg-white/80 rounded-lg border border-emerald-100 space-y-1">
+              <div className="font-bold text-emerald-950 font-mono text-[11px] flex items-center gap-1.5">
+                <span>🔒 INDIVIDUAL INVESTOR (LP)</span>
+                <span className="text-[10px] text-emerald-600 font-normal">(Isolated Personal Position)</span>
+              </div>
+              <p>
+                Your deposit and encrypted handle (<code>euint256</code>) are <strong>100% private to your wallet address</strong>. No other LP can see your balance. Decryption requires your personal EIP-712 wallet authorization.
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* ═══════════════════════════════════════════════════════════
             SECTION 5: INTERACTIVE DEMO
