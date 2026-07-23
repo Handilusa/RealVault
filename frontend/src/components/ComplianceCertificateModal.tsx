@@ -1,12 +1,13 @@
 "use client";
 
 import { useRef } from "react";
+import { DEPLOYED_ADDRESSES } from "@/lib/contracts";
 
 interface ComplianceCertificateModalProps {
   isOpen: boolean;
   auditorAddress: string;
   investorCount: number;
-  totalNavUsd: number;
+  navHandle: string | null;
   onClose: () => void;
 }
 
@@ -14,7 +15,7 @@ export default function ComplianceCertificateModal({
   isOpen,
   auditorAddress,
   investorCount,
-  totalNavUsd,
+  navHandle,
   onClose,
 }: ComplianceCertificateModalProps) {
   const certificateRef = useRef<HTMLDivElement>(null);
@@ -125,7 +126,7 @@ export default function ComplianceCertificateModal({
                 Authenticated Auditor Address
               </span>
               <span className="font-mono text-[11px] font-bold text-indigo-600 break-all block">
-                {auditorAddress}
+                {auditorAddress || "Not Specified"}
               </span>
             </div>
           </div>
@@ -140,7 +141,7 @@ export default function ComplianceCertificateModal({
                 <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                FHE Homomorphically Verified
+                TEE Enclave Verified
               </span>
             </div>
 
@@ -156,10 +157,10 @@ export default function ComplianceCertificateModal({
 
               <div className="p-3.5 rounded-lg border border-zinc-200 bg-white shadow-sm space-y-0.5">
                 <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
-                  Homomorphic Aggregated NAV
+                  Enclave Aggregated NAV
                 </span>
-                <div className="text-xl font-bold font-data text-emerald-600">
-                  ${totalNavUsd.toLocaleString("en-US", { minimumFractionDigits: 2 })} <span className="text-[10px] font-mono text-zinc-400 font-normal">USDC</span>
+                <div className="text-sm font-bold font-data text-emerald-600 font-mono break-all">
+                  {navHandle ? `${navHandle.slice(0, 14)}...${navHandle.slice(-6)}` : "TEE Encrypted"}
                 </div>
               </div>
             </div>
@@ -173,7 +174,7 @@ export default function ComplianceCertificateModal({
               </svg>
             </div>
             <p className="text-[11px] leading-relaxed text-zinc-600">
-              Proves on-chain solvency for position handles managed by <code className="font-mono text-zinc-900 bg-white px-1 py-0.5 rounded border border-zinc-200">FundVault.sol</code>. Balances were homomorphically aggregated via <strong className="text-zinc-900">iExec Nox FHE (`Nox.add`)</strong> inside an enclave without exposing individual LP position amounts to the public mempool.
+              Proves on-chain solvency for position handles managed by <code className="font-mono text-zinc-900 bg-white px-1 py-0.5 rounded border border-zinc-200">FundVault.sol</code>. Balances were aggregated confidentially via <strong className="text-zinc-900">iExec Nox TEE (`Nox.add`)</strong> inside an enclave without exposing individual LP position amounts to the public mempool.
             </p>
           </div>
         </div>
@@ -183,7 +184,7 @@ export default function ComplianceCertificateModal({
           <div className="space-y-0.5 hidden sm:block">
             <span className="text-[10px] font-mono text-zinc-400 block">Verified Smart Contract:</span>
             <a
-              href="https://sepolia.etherscan.io/address/0x9B1777491F7ab00C9de386D20d450Ff3f587f28a#code"
+              href={`https://sepolia.etherscan.io/address/${DEPLOYED_ADDRESSES.contracts.DisclosureManager}#code`}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-indigo-600 hover:underline"

@@ -58,13 +58,25 @@ contract FundVault {
     function setNavAggregator(address _navAggregator) external onlyAdmin {
         require(_navAggregator != address(0), "Invalid address");
         navAggregator = _navAggregator;
-        // Allow NAVAggregator to read totalNav handle for FHE aggregation
+        // Allow NAVAggregator to read totalNav handle for TEE enclave aggregation
         Nox.allow(totalNav, _navAggregator);
         emit NavAggregatorUpdated(_navAggregator);
     }
 
-    /// @notice Inversor deposita un monto cifrado (handle verificado desde externalEuint256 + proof)
+    /// @notice Inversor deposita un monto cifrado y transfiere mUSDC publico a la tesoreria de FundVault
+    function deposit(externalEuint256 inputHandle, bytes calldata inputProof, uint256 plainAmount) external {
+        if (address(depositToken) != address(0) && plainAmount > 0) {
+            require(depositToken.transferFrom(msg.sender, address(this), plainAmount), "FundVault: mUSDC transfer failed");
+        }
+        _internalDeposit(inputHandle, inputProof);
+    }
+
+    /// @notice Sobrecarga para mantener compatibilidad Nox TEE directa
     function deposit(externalEuint256 inputHandle, bytes calldata inputProof) external {
+        _internalDeposit(inputHandle, inputProof);
+    }
+
+    function _internalDeposit(externalEuint256 inputHandle, bytes calldata inputProof) internal {
         euint256 amount = Nox.fromExternal(inputHandle, inputProof);
 
         if (!isInvestor[msg.sender]) {
@@ -100,8 +112,20 @@ contract FundVault {
         emit NavUpdated();
     }
 
-    /// @notice Inversor retira un monto cifrado
+    /// @notice Inversor retira un monto cifrado y recibe mUSDC de regreso en su wallet
+    function withdraw(externalEuint256 inputHandle, bytes calldata inputProof, uint256 plainAmount) external {
+        _internalWithdraw(inputHandle, inputProof);
+        if (address(depositToken) != address(0) && plainAmount > 0) {
+            require(depositToken.transfer(msg.sender, plainAmount), "FundVault: mUSDC transfer back failed");
+        }
+    }
+
+    /// @notice Sobrecarga para mantener compatibilidad Nox TEE directa
     function withdraw(externalEuint256 inputHandle, bytes calldata inputProof) external {
+        _internalWithdraw(inputHandle, inputProof);
+    }
+
+    function _internalWithdraw(externalEuint256 inputHandle, bytes calldata inputProof) internal {
         require(isInvestor[msg.sender], "FundVault: not an investor");
 
         euint256 amount = Nox.fromExternal(inputHandle, inputProof);

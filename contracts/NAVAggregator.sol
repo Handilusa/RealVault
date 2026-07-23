@@ -9,14 +9,14 @@ interface IFundVault {
     function investorCount() external view returns (uint256);
 }
 
-/// @title NAVAggregator — Calculador de NAV público vía FHE on-chain
+/// @title NAVAggregator — Calculador de NAV público vía Nox TEE enclaves on-chain
 /// @notice Ejecuta sumas sobre handles de posiciones cifradas sin descifrar ningún balance individual.
 ///         Soporta agregación en 1 bloque (aggregateAll) y batching incremental (startBatch/processBatch).
 contract NAVAggregator {
     address public admin;
     IFundVault public vault;
 
-    euint256 public aggregatedNav;       // NAV acumulado FHE
+    euint256 public aggregatedNav;       // NAV acumulado cifrado TEE
     uint256 public lastUpdateBlock;
     uint256 public lastInvestorCount;
 
@@ -43,7 +43,7 @@ contract NAVAggregator {
         Nox.allowThis(batchAccumulator);
     }
 
-    /// @notice Calcula el NAV agregado sumando FHE todas las posiciones en 1 bloque
+    /// @notice Calcula el NAV agregado sumando en TEE todas las posiciones en 1 bloque
     function aggregateAll() external {
         require(!batchInProgress, "Batch in progress, use processBatch()");
 

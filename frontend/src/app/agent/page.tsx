@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function AgentRedirect() {
-  return null;
+  redirect("/?role=public");
 }

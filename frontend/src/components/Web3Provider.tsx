@@ -3,11 +3,11 @@
 import "@rainbow-me/rainbowkit/styles.css";
 import { RainbowKitProvider, lightTheme, connectorsForWallets } from "@rainbow-me/rainbowkit";
 import { metaMaskWallet, injectedWallet, coinbaseWallet } from "@rainbow-me/rainbowkit/wallets";
-import { createConfig, WagmiProvider, http } from "wagmi";
+import { createConfig, WagmiProvider, http, fallback } from "wagmi";
 import { sepolia } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
-import { RPC_URL } from "@/lib/contracts";
+import { SEPOLIA_RPC_FALLBACKS } from "@/lib/contracts";
 
 const connectors = connectorsForWallets(
   [
@@ -26,7 +26,9 @@ const config = createConfig({
   connectors,
   chains: [sepolia],
   transports: {
-    [sepolia.id]: http(RPC_URL),
+    [sepolia.id]: fallback(
+      SEPOLIA_RPC_FALLBACKS.map((url) => http(url))
+    ),
   },
   ssr: true,
 });

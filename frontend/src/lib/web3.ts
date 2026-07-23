@@ -1,10 +1,30 @@
 import { ethers } from "ethers";
-import { DEPLOYED_ADDRESSES, RPC_URL } from "./contracts";
+import { DEPLOYED_ADDRESSES, RPC_URL, createFallbackProvider } from "./contracts";
 
 export const SEPOLIA_HEX_CHAIN_ID = "0xaa36a7"; // 11155111 in hex
 
 /**
- * Triggers a MetaMask / Web3 provider popup asking the user to switch to Sepolia (11155111).
+ * Returns a robust read-only provider, prioritizing the connected browser wallet (if available
+ * and on Sepolia), or falling back to a multi-RPC fallback provider.
+ */
+export async function getReadOnlyProvider(): Promise<ethers.Provider> {
+  if (typeof window !== "undefined" && (window as any).ethereum) {
+    try {
+      const browserProvider = new ethers.BrowserProvider((window as any).ethereum);
+      const network = await browserProvider.getNetwork();
+      // Only use browser provider if wallet is on Sepolia
+      if (Number(network.chainId) === 11155111) {
+        return browserProvider;
+      }
+    } catch {
+      // Wallet not connected or errored — fall through to RPC fallback
+    }
+  }
+  return createFallbackProvider();
+}
+
+/**
+ * Triggers a Web3 provider popup asking the user to switch to Sepolia (11155111).
  * If Sepolia is not added, requests adding it automatically.
  */
 export async function ensureSepoliaNetwork(): Promise<boolean> {

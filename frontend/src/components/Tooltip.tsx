@@ -4,17 +4,16 @@ import { useState, useRef, useId } from "react";
 
 // Glossary of technical terms with plain-language definitions
 const GLOSSARY: Record<string, string> = {
-  FHE: "Fully Homomorphic Encryption: perform math on encrypted data without ever decrypting it.",
+  TEE: "Trusted Execution Environment (iExec Nox enclaves): a secure hardware enclave that processes encrypted handle computations without exposing plaintext data to host nodes.",
   ACL: "Access Control List: defines exactly who is allowed to view encrypted data on-chain.",
   "ERC-7984":
     "Ethereum token standard for confidential balances - amounts are encrypted, transfers are composable.",
   "EIP-712":
     "Structured data signing standard - your wallet signs a typed message to prove identity without sending a transaction.",
   BPS: "Basis points: 1 BPS = 0.01%. Used to express allocation ratios on-chain (e.g. 6000 BPS = 60%).",
-  TEE: "Trusted Execution Environment: a secure hardware enclave that processes data without exposing it to the host.",
   "O(n)":
     "Linear gas scaling: cost grows proportionally with the number of investors (N) in the fund.",
-  NAV: "Net Asset Value: the total value of all assets in the fund, aggregated homomorphically.",
+  NAV: "Net Asset Value: the total value of all assets in the fund, aggregated confidentially via enclaves.",
   "Handle Rotation":
     "Generating a fresh encrypted pointer (handle) with a clean access list, invalidating old viewers.",
 };

@@ -50,7 +50,7 @@ async function main() {
   // ========================================
   // Phase 1: Register investors via real FHE deposits
   // ========================================
-  const TARGET_INVESTORS = 8;
+  const TARGET_INVESTORS = 3;
   const gasData = {
     grant: [],
     revoke: [],
@@ -60,13 +60,6 @@ async function main() {
   // Check how many investors are already registered
   const existingCount = Number(await fundVault.investorCount());
   console.log(`📋 Existing investors: ${existingCount}`);
-
-  // We need to deposit from unique addresses. Since we only have 1 signer,
-  // we'll use the deployer for all deposits but create unique "investor" entries
-  // by calling deposit multiple times from the same address.
-  // However, FundVault only registers each address ONCE (isInvestor check).
-  //
-  // Strategy: Generate ephemeral wallets, fund them with ETH, then deposit from each.
 
   console.log(`\n🔑 Generating ${TARGET_INVESTORS} ephemeral investor wallets...`);
 
@@ -79,14 +72,14 @@ async function main() {
 
   // Fund each investor wallet with ETH for gas
   console.log(`\n💸 Funding investor wallets with ETH for gas...`);
-  const fundAmount = hre.ethers.parseEther("0.008"); // ~8M gas worth per investor
+  const fundAmount = hre.ethers.parseEther("0.0015"); // ~1.5M gas worth per investor
   for (let i = 0; i < investors.length; i++) {
     const tx = await deployer.sendTransaction({
       to: investors[i].address,
       value: fundAmount,
     });
     await tx.wait();
-    console.log(`   ✅ Funded Investor ${i + 1} with 0.008 ETH`);
+    console.log(`   ✅ Funded Investor ${i + 1} with 0.0015 ETH`);
   }
 
   // Each investor: encrypt deposit amount → call deposit()
@@ -170,12 +163,14 @@ async function main() {
     const g = gasData.grant[i];
     const r = gasData.revoke[i];
     const a = gasData.aggregate[i];
-    console.log(
-      `| ${g.investors.toString().padStart(9)} | ${g.gas.toString().padStart(12)} | ${r.gas.toString().padStart(15)} | ${a.gas.toString().padStart(13)} |`
-    );
+    const gStr = g?.gas ? g.gas.toString().padStart(12) : "N/A".padStart(12);
+    const rStr = r?.gas ? r.gas.toString().padStart(15) : "N/A".padStart(15);
+    const aStr = a?.gas ? a.gas.toString().padStart(13) : "N/A".padStart(13);
+    const invStr = (g?.investors || r?.investors || a?.investors || (i + 2)).toString().padStart(9);
+    console.log(`| ${invStr} | ${gStr} | ${rStr} | ${aStr} |`);
   }
 
-  // Calculate linear regression slope
+  // Calculate linear regression slope if we have at least 2 measurements
   if (gasData.revoke.length >= 2) {
     const first = gasData.revoke[0];
     const last = gasData.revoke[gasData.revoke.length - 1];

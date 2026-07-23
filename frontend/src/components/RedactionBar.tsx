@@ -54,7 +54,7 @@ export default function RedactionBar({
       <span className="sr-only">
         {isRevealed
           ? `Value decrypted: ${value}`
-          : "Value is encrypted via iExec Nox FHE"}
+          : "Position stored as an encrypted Nox handle"}
       </span>
     </span>
   );

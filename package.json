@@ -12,6 +12,7 @@
     "deploy:arbitrum": "hardhat run scripts/deploy.js --network arbitrumSepolia",
     "check:nav": "hardhat run scripts/nav-integrity-check.js --network sepolia",
     "simulate:sepolia": "hardhat run scripts/simulate-sepolia-flow.js --network sepolia",
+    "deposit:sepolia": "hardhat run scripts/deposit-sepolia.js --network sepolia",
     "simulate:arbitrum": "hardhat run scripts/simulate-sepolia-flow.js --network arbitrumSepolia",
     "benchmark:gas": "hardhat run scripts/gas-scaling-benchmark.js --network sepolia"
   },
