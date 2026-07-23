@@ -106,7 +106,10 @@ export default function RealVaultApp() {
     loaded: false,
   });
 
-  // Hydrate shadow balance from localStorage on mount
+  // Personal LP portfolio allocation preference (per-user)
+  const [personalAllocRatio, setPersonalAllocRatio] = useState<number>(50);
+
+  // Hydrate shadow balance & personal allocation preference from localStorage on mount
   useEffect(() => {
     if (!account) return;
     const key = `rv_shadow_${account.toLowerCase()}`;
@@ -114,11 +117,17 @@ export default function RealVaultApp() {
     if (stored) {
       setSandboxState((prev) => ({ ...prev, shadowBalance: parseFloat(stored) }));
     }
+
+    const allocKey = `rv_personal_alloc_${account.toLowerCase()}`;
+    const storedAlloc = localStorage.getItem(allocKey);
+    if (storedAlloc) {
+      setPersonalAllocRatio(parseInt(storedAlloc, 10));
+    }
   }, [account]);
 
   // Section 6: Compliance & Rebalancing state
   const [complianceState, setComplianceState] = useState({
-    auditorAddress: "0x9530CDDECAB21750ce904E14DE25bDFdaE77f3D0",
+    auditorAddress: "",
     isActiveAuditor: false,
     isProcessing: false,
     lastGasUsed: null as number | null,
@@ -162,6 +171,13 @@ export default function RealVaultApp() {
     description: "",
     onConfirm: () => {},
   });
+
+  const handlePersonalAllocChange = (val: number) => {
+    setPersonalAllocRatio(val);
+    if (account) {
+      localStorage.setItem(`rv_personal_alloc_${account.toLowerCase()}`, val.toString());
+    }
+  };
 
   // Copy helper
   const copyToClipboard = (text: string, label: string) => {
@@ -1359,66 +1375,113 @@ export default function RealVaultApp() {
             </div>
           </div>
 
-          {/* Deposit + Position Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 gsap-slide-up">
+          {/* Deposit + Position + Personal Strategy Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 gsap-slide-up">
             {/* Encrypted Position */}
-            <div className="vault-card p-8 space-y-5">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-bold text-zinc-900">On-Chain Encrypted Position</span>
-                <span className="badge-fhe">TEE Handle</span>
+            <div className="vault-card p-6 space-y-5 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-zinc-900">On-Chain Encrypted Position</span>
+                  <span className="badge-fhe">TEE Handle</span>
+                </div>
+
+                <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50 space-y-3">
+                  <div>
+                    <span className="text-[11px] font-mono uppercase text-zinc-400 block mb-1">Position Balance</span>
+                    <div className="text-xl font-bold font-data text-zinc-900">
+                      <RedactionBar
+                        isRevealed={sandboxState.isDecrypted}
+                        value={sandboxState.shadowBalance > 0 ? `${sandboxState.shadowBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })} mUSDC` : "No active position"}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-zinc-400">On-Chain Handle:</span>
+                      {sandboxState.positionHandle && (
+                        <button
+                          onClick={() => copyToClipboard(sandboxState.positionHandle!, "handle")}
+                          className="text-indigo-600 hover:underline"
+                        >
+                          {copiedText === "handle" ? "Copied" : "Copy"}
+                        </button>
+                      )}
+                    </div>
+                    <div className="inset-panel text-[11px] truncate font-mono">
+                      {account ? (sandboxState.positionHandle || "No position on-chain") : "Connect wallet to read"}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="p-5 rounded-lg border border-zinc-200 bg-zinc-50 space-y-4">
-                <div>
-                  <span className="text-xs font-mono uppercase text-zinc-400 block mb-1">Position Balance</span>
-                  <div className="text-xl font-bold font-data text-zinc-900">
-                    <RedactionBar
-                      isRevealed={sandboxState.isDecrypted}
-                      value={sandboxState.shadowBalance > 0 ? `${sandboxState.shadowBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })} mUSDC` : "No active position"}
-                    />
-                  </div>
+              <button
+                onClick={() => {
+                  if (!sandboxState.isDecrypted) {
+                    handleSignAndDecrypt();
+                  } else {
+                    setSandboxState((prev) => ({ ...prev, isDecrypted: false }));
+                  }
+                }}
+                disabled={!account}
+                className="btn-secondary w-full text-xs py-2.5 font-mono flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>{sandboxState.isDecrypted ? "Lock Position" : "Verify Wallet Authorization"}</span>
+              </button>
+            </div>
+
+            {/* Personal LP Allocation Strategy */}
+            <div className="vault-card p-6 space-y-4 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-zinc-900">My Portfolio Allocation</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                    Personal Control
+                  </span>
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs font-mono">
-                    <span className="text-zinc-400">On-Chain Handle:</span>
-                    {sandboxState.positionHandle && (
-                      <button
-                        onClick={() => copyToClipboard(sandboxState.positionHandle!, "handle")}
-                        className="text-indigo-600 hover:underline"
-                      >
-                        {copiedText === "handle" ? "Copied" : "Copy"}
-                      </button>
-                    )}
-                  </div>
-                  <div className="inset-panel text-[11px] truncate">
-                    {account ? (sandboxState.positionHandle || "No position on-chain") : "Connect wallet to read"}
-                  </div>
-                </div>
+                <p className="text-xs text-zinc-500 leading-snug">
+                  Select your personal risk weight for your LP funds. Each LP maintains independent asset preference.
+                </p>
 
-                <div className="pt-3 border-t border-zinc-200">
-                  <button
-                    onClick={() => {
-                      if (!sandboxState.isDecrypted) {
-                        handleSignAndDecrypt();
-                      } else {
-                        setSandboxState((prev) => ({ ...prev, isDecrypted: false }));
-                      }
-                    }}
-                    disabled={!account}
-                    className="btn-secondary w-full text-sm py-2.5 font-mono flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-4 h-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    <span>{sandboxState.isDecrypted ? "Lock Position" : "Verify Wallet Authorization"}</span>
-                  </button>
+                <div className="p-3.5 rounded-lg border border-indigo-100 bg-indigo-50/50 space-y-2">
+                  <div className="flex justify-between items-center text-xs font-mono">
+                    <span className="text-zinc-500 uppercase text-[10px]">Personal APY:</span>
+                    <span className="font-bold text-indigo-900 text-sm">
+                      {(3.706 * (personalAllocRatio / 100) + 6.71 * ((100 - personalAllocRatio) / 100)).toFixed(2)}% APY
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-[11px] font-mono text-zinc-700 pt-1">
+                    <span>{personalAllocRatio}% Sovereign (T-Bills)</span>
+                    <span>{100 - personalAllocRatio}% Real Estate</span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={personalAllocRatio}
+                    onChange={(e) => handlePersonalAllocChange(Number(e.target.value))}
+                    className="w-full accent-indigo-600 cursor-pointer h-2 bg-zinc-200 rounded-lg"
+                  />
                 </div>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-[11px] font-mono text-zinc-600 flex items-center justify-between">
+                <span className="text-zinc-400">Target Strategy:</span>
+                <span className="font-bold text-zinc-900">
+                  {personalAllocRatio >= 70 ? "Defensive Sovereign" : personalAllocRatio <= 30 ? "High Yield CRE" : "Balanced Sovereign/CRE"}
+                </span>
               </div>
             </div>
 
             {/* Confidential Deposit */}
-            <div className="vault-card p-8 space-y-5">
+            <div className="vault-card p-6 space-y-4 flex flex-col justify-between">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-bold text-zinc-900">Confidential Deposit</span>
                 <span className="text-xs font-mono text-zinc-400">FundVault.deposit()</span>
@@ -1660,8 +1723,22 @@ export default function RealVaultApp() {
             {/* Target Allocation Policy */}
             <div className="vault-card p-8 space-y-5">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-bold text-zinc-900">Portfolio Rebalance Policy</span>
-                <span className="text-xs font-mono text-indigo-600">RebalancerAgent.sol</span>
+                <span className="text-sm font-bold text-zinc-900">Contract Rebalance Policy</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 font-bold">
+                  RebalancerAgent.sol Admin
+                </span>
+              </div>
+
+              <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-600 space-y-1">
+                <div className="font-bold text-zinc-800 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Pooled Contract Macro Strategy</span>
+                </div>
+                <p className="text-[11px] font-sans leading-relaxed text-zinc-500">
+                  Submits target asset weighting to <code>RebalancerAgent.sol</code> for macro rebalancing. Requires Contract Admin signer on Sepolia. LP investors configure their personal risk strategy in Section 5 above.
+                </p>
               </div>
 
               <div className="space-y-2">
