@@ -27,7 +27,7 @@ import {
   MOCK_USDC_ABI,
   RWA_PORTFOLIO_ASSETS,
 } from "@/lib/contracts";
-import { ensureSepoliaNetwork, getReadOnlyProvider } from "@/lib/web3";
+import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider } from "@/lib/web3";
 import { fetchMarketData, calculateBlendedAPY, MarketDataPoint } from "@/lib/marketData";
 
 gsap.registerPlugin(ScrollTrigger);
@@ -362,12 +362,14 @@ export default function RealVaultApp() {
   // ─── ACTION HANDLERS ──────────────────────────────────────────
 
   const handleMintTestTokens = async () => {
-    if (!account) return;
+    if (!account) {
+      setSandboxState((prev) => ({ ...prev, statusMsg: "Please connect your Web3 wallet (MetaMask, Rabby) first." }));
+      return;
+    }
     setSandboxState((prev) => ({ ...prev, isMinting: true, statusMsg: "Minting 100 mUSDC on Sepolia..." }));
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
 
       const tx = await usdc.mint(account, ethers.parseUnits("100", 18));
@@ -383,7 +385,10 @@ export default function RealVaultApp() {
   };
 
   const handleDeposit = async () => {
-    if (!account) return;
+    if (!account) {
+      setSandboxState((prev) => ({ ...prev, statusMsg: "Please connect your Web3 wallet (MetaMask, Rabby) first." }));
+      return;
+    }
     const amountNum = parseFloat(sandboxState.depositAmount);
     if (isNaN(amountNum) || amountNum <= 0) return;
 
@@ -391,8 +396,7 @@ export default function RealVaultApp() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, signer);
 
@@ -458,8 +462,7 @@ export default function RealVaultApp() {
     if (!account) return;
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
 
       const domain = {
         name: "RealVault Confidentiality Protocol",
@@ -506,8 +509,7 @@ export default function RealVaultApp() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, signer);
 
       const tx = await manager.grantAuditorAccess(complianceState.auditorAddress);
@@ -540,8 +542,7 @@ export default function RealVaultApp() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, signer);
 
       const tx = await manager.revokeAuditorAccess(complianceState.auditorAddress);
@@ -575,8 +576,7 @@ export default function RealVaultApp() {
       description: `Revoking auditor ${complianceState.auditorAddress.slice(0, 10)}... will trigger DisclosureManager.revokeAuditorAccess() which internally calls FundVault.rotateHandles(). This re-encrypts all LP position handles and permanently invalidates past auditor viewing keys.`,
       estimateGas: async () => {
         try {
-          const provider = new ethers.BrowserProvider((window as any).ethereum);
-          const signer = await provider.getSigner();
+          const { signer } = await getBrowserSignerProvider();
           const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, signer);
           const estimate = await manager.revokeAuditorAccess.estimateGas(complianceState.auditorAddress);
           return estimate;
@@ -609,8 +609,7 @@ export default function RealVaultApp() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const agent = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RebalancerAgent, REBALANCER_ABI, signer);
 
       const bpsA = rebalanceState.targetRatioA * 100;
@@ -655,8 +654,7 @@ export default function RealVaultApp() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const agent = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RebalancerAgent, REBALANCER_ABI, signer);
 
       const { createEthersHandleClient } = await import("@iexec-nox/handle");
@@ -702,8 +700,7 @@ export default function RealVaultApp() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const navAggregator = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.NAVAggregator, NAV_AGGREGATOR_ABI, signer);
 
       const tx = await navAggregator.aggregateAll();

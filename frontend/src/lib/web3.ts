@@ -12,15 +12,27 @@ export async function getReadOnlyProvider(): Promise<ethers.Provider> {
     try {
       const browserProvider = new ethers.BrowserProvider((window as any).ethereum);
       const network = await browserProvider.getNetwork();
-      // Only use browser provider if wallet is on Sepolia
       if (Number(network.chainId) === 11155111) {
         return browserProvider;
       }
     } catch {
-      // Wallet not connected or errored — fall through to RPC fallback
+      // Wallet not connected or wrong network — fall through to fallback provider
     }
   }
   return createFallbackProvider();
+}
+
+/**
+ * Safely creates an Ethers BrowserProvider and gets the active signer.
+ * Throws a clean user-friendly error if no Web3 wallet extension is detected.
+ */
+export async function getBrowserSignerProvider(): Promise<{ provider: ethers.BrowserProvider; signer: ethers.Signer }> {
+  if (typeof window === "undefined" || !(window as any).ethereum) {
+    throw new Error("No Web3 wallet extension (MetaMask, Rabby, Coinbase Wallet) detected in browser. Please install or connect a Web3 wallet.");
+  }
+  const provider = new ethers.BrowserProvider((window as any).ethereum);
+  const signer = await provider.getSigner();
+  return { provider, signer };
 }
 
 /**

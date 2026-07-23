@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 import { useAccount } from "wagmi";
 import Navbar from "@/components/Navbar";
 import { DEPLOYED_ADDRESSES, RPC_URL, createFallbackProvider, DISCLOSURE_MANAGER_ABI } from "@/lib/contracts";
-import { ensureSepoliaNetwork } from "@/lib/web3";
+import { ensureSepoliaNetwork, getBrowserSignerProvider } from "@/lib/web3";
 import {
   Eye,
   ShieldAlert,
@@ -70,8 +70,7 @@ export default function AuditorPage() {
     try {
       await ensureSepoliaNetwork();
       const validAddr = ethers.getAddress(auditorAddress.trim());
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const manager = new ethers.Contract(
         DEPLOYED_ADDRESSES.contracts.DisclosureManager,
         DISCLOSURE_MANAGER_ABI,
@@ -103,8 +102,7 @@ export default function AuditorPage() {
     setStatusMsg("Submitting revokeAuditorAccess transaction (Handle Rotation) to ETH Sepolia...");
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const manager = new ethers.Contract(
         DEPLOYED_ADDRESSES.contracts.DisclosureManager,
         DISCLOSURE_MANAGER_ABI,

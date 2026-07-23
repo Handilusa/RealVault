@@ -12,7 +12,7 @@ import {
   MOCK_USDC_ABI,
   DISCLOSURE_MANAGER_ABI,
 } from "@/lib/contracts";
-import { ensureSepoliaNetwork, getReadOnlyProvider } from "@/lib/web3";
+import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider } from "@/lib/web3";
 import { fetchMarketData, MarketDataPoint } from "@/lib/marketData";
 
 export default function PersonalPortfolioPage() {
@@ -93,8 +93,7 @@ export default function PersonalPortfolioPage() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
 
       const tx = await usdc.mint(account, ethers.parseUnits("1000", 18));
@@ -121,8 +120,7 @@ export default function PersonalPortfolioPage() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, signer);
 
@@ -186,8 +184,7 @@ export default function PersonalPortfolioPage() {
 
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, signer);
 
       const amountParsed = ethers.parseUnits(withdrawAmount, 18);

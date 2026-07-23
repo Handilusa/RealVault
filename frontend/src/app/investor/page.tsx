@@ -10,7 +10,7 @@ import {
   FUND_VAULT_ABI,
   MOCK_USDC_ABI,
 } from "@/lib/contracts";
-import { ensureSepoliaNetwork, getReadOnlyProvider } from "@/lib/web3";
+import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider } from "@/lib/web3";
 
 const toHexHandle = (val: any): string | null => {
   if (!val || val === "0" || val === 0n) return null;
@@ -80,8 +80,7 @@ export default function InvestorPortalPage() {
     setStatusMsg("Minting 1,000 mUSDC...");
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
       const tx = await usdc.mint(account, ethers.parseUnits("1000", 18));
       await tx.wait();
@@ -103,8 +102,7 @@ export default function InvestorPortalPage() {
     setStatusMsg("Checking mUSDC allowance...");
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, signer);
       const amountParsed = ethers.parseUnits(depositAmount, 18);
@@ -152,8 +150,7 @@ export default function InvestorPortalPage() {
     setStatusMsg("Encrypting withdrawal via Nox TEE...");
     try {
       await ensureSepoliaNetwork();
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
+      const { provider, signer } = await getBrowserSignerProvider();
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, signer);
       const amountParsed = ethers.parseUnits(withdrawAmount, 18);
 

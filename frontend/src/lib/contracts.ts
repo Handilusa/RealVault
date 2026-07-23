@@ -27,12 +27,12 @@ export const DEPLOYED_ADDRESSES = {
 };
 
 export const SEPOLIA_RPC_FALLBACKS = [
-  "https://sepolia.gateway.tenderly.co",
-  "https://rpc.ankr.com/eth_sepolia",
-  "https://ethereum-sepolia.blockpi.network/v1/rpc/public",
   "https://ethereum-sepolia-rpc.publicnode.com",
+  "https://rpc.ankr.com/eth_sepolia",
   "https://1rpc.io/sepolia",
-  "https://rpc2.sepolia.org",
+  "https://sepolia.gateway.tenderly.co",
+  "https://ethereum-sepolia.blockpi.network/v1/rpc/public",
+  "https://rpc.sepolia.org",
 ];
 
 export const RPC_URL = SEPOLIA_RPC_FALLBACKS[0];
@@ -42,34 +42,40 @@ let _cachedRpcIndex = 0;
 
 /**
  * Creates a JsonRpcProvider, trying each fallback RPC in order until one responds.
- * Caches the working endpoint index so subsequent calls skip known-dead RPCs.
+ * Uses a 3.5s timeout per RPC attempt so slow/dead nodes don't hang the dApp.
  */
 export async function createFallbackProvider(testLogs = false): Promise<ethers.JsonRpcProvider> {
-  // Start from the last known working index
+  const withTimeout = <T>(promise: Promise<T>, ms = 3500): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error("RPC Timeout")), ms)),
+    ]);
+  };
+
   for (let attempt = 0; attempt < SEPOLIA_RPC_FALLBACKS.length; attempt++) {
     const idx = (_cachedRpcIndex + attempt) % SEPOLIA_RPC_FALLBACKS.length;
     const url = SEPOLIA_RPC_FALLBACKS[idx];
     const provider = new ethers.JsonRpcProvider(url, 11155111, { staticNetwork: true });
     try {
-      // Quick health check
-      const block = await provider.getBlockNumber();
+      const block = await withTimeout(provider.getBlockNumber(), 3500);
       if (testLogs) {
-        // Test getLogs capacity to prevent 403 Archive errors
-        await provider.getLogs({
-          address: DEPLOYED_ADDRESSES.contracts.FundVault,
-          fromBlock: Math.max(0, block - 100),
-          toBlock: block,
-        });
+        await withTimeout(
+          provider.getLogs({
+            address: DEPLOYED_ADDRESSES.contracts.FundVault,
+            fromBlock: Math.max(0, block - 100),
+            toBlock: block,
+          }),
+          4000
+        );
       }
       _cachedRpcIndex = idx; // cache working index
       return provider;
     } catch {
-      console.warn(`RPC fallback failed (testLogs=${testLogs}): ${url}`);
+      console.warn(`RPC endpoint failed or timed out: ${url}`);
       continue;
     }
   }
-  // All failed — return first one as fallback
-  console.error("All Sepolia RPC endpoints failed");
+  // All failed — return first one as last resort
   return new ethers.JsonRpcProvider(SEPOLIA_RPC_FALLBACKS[0], 11155111, { staticNetwork: true });
 }
 
