@@ -53,7 +53,8 @@ export default function ComplianceCertificateModal({
   };
 
   const currentDate = new Date().toISOString().split("T")[0];
-  const certificateId = `RV-AUDIT-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+  const hashSeed = navHandle || auditorAddress || DEPLOYED_ADDRESSES.contracts.DisclosureManager;
+  const certificateId = `RV-AUDIT-2026-${hashSeed.slice(2, 10).toUpperCase()}`;
 
   return (
     <div

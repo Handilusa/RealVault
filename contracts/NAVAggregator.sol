@@ -9,33 +9,27 @@ interface IFundVault {
     function investorCount() external view returns (uint256);
 }
 
-/// @title NAVAggregator — Calculador de NAV público vía Nox TEE enclaves on-chain
-/// @notice Ejecuta sumas sobre handles de posiciones cifradas sin descifrar ningún balance individual.
-///         Soporta agregación en 1 bloque (aggregateAll) y batching incremental (startBatch/processBatch).
+/// @title NAVAggregator — Public Read-Only Aggregate NAV Calculator via Nox TEE
+/// @notice Computes public aggregate fund NAV on-chain using homomorphic addition (`Nox.add`)
+///         across encrypted handles without revealing individual position amounts.
 contract NAVAggregator {
-    address public admin;
     IFundVault public vault;
 
-    euint256 public aggregatedNav;       // NAV acumulado cifrado TEE
+    euint256 public aggregatedNav;       // Encrypted aggregate NAV handle
     uint256 public lastUpdateBlock;
     uint256 public lastInvestorCount;
 
-    // Estado para batching incremental
-    uint256 public batchCursor;          // Índice del último inversor procesado
-    euint256 public batchAccumulator;    // Acumulador parcial entre bloques
+    // Incremental batching state
+    uint256 public batchCursor;          // Index of last processed investor
+    euint256 public batchAccumulator;    // Partial accumulator
     bool public batchInProgress;
 
     event NavAggregated(uint256 totalInvestors, uint256 blockNumber);
     event BatchStarted(uint256 totalInvestors);
     event BatchProgress(uint256 processedCount, uint256 totalInvestors);
 
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "NAVAggregator: caller is not admin");
-        _;
-    }
-
     constructor(address _vault) {
-        admin = msg.sender;
+        require(_vault != address(0), "Invalid vault address");
         vault = IFundVault(_vault);
         aggregatedNav = Nox.toEuint256(0);
         Nox.allowThis(aggregatedNav);
@@ -43,7 +37,7 @@ contract NAVAggregator {
         Nox.allowThis(batchAccumulator);
     }
 
-    /// @notice Calcula el NAV agregado sumando en TEE todas las posiciones en 1 bloque
+    /// @notice Compute aggregate NAV in 1 block for public fund statistics
     function aggregateAll() external {
         require(!batchInProgress, "Batch in progress, use processBatch()");
 
@@ -66,7 +60,7 @@ contract NAVAggregator {
         emit NavAggregated(investorList.length, block.number);
     }
 
-    /// @notice Inicia un proceso de agregación incremental por lotes
+    /// @notice Start incremental batching
     function startBatch() external {
         require(!batchInProgress, "Batch already in progress");
         batchInProgress = true;
@@ -77,7 +71,7 @@ contract NAVAggregator {
         emit BatchStarted(vault.investorCount());
     }
 
-    /// @notice Procesa un lote parcial de inversores (batchSize)
+    /// @notice Process partial batch of investors
     function processBatch(uint256 batchSize) external {
         require(batchInProgress, "No batch in progress");
 
@@ -108,3 +102,4 @@ contract NAVAggregator {
         }
     }
 }
+

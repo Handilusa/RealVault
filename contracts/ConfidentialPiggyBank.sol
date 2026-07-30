@@ -3,36 +3,41 @@ pragma solidity ^0.8.35;
 
 import {Nox, euint256, externalEuint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
-/// @title ConfidentialPiggyBank (Fase 0 — Hello World Verification)
-/// @notice Contrato básico para verificar imports, tipos euint256 y permisos Nox.allow/allowThis
+/// @title ConfidentialPiggyBank — Multi-User Sovereign Encrypted Piggy Bank
+/// @notice Simple encrypted savings contract allowing any wallet to maintain their own private balance.
 contract ConfidentialPiggyBank {
-    euint256 public balance;
-    address public owner;
+    mapping(address => euint256) private balances;
+    mapping(address => bool) public isInitialized;
 
-    event Deposited(address indexed owner);
-    event Withdrawn(address indexed owner);
+    event Deposited(address indexed account);
+    event Withdrawn(address indexed account);
 
-    constructor() {
-        owner = msg.sender;
-        balance = Nox.toEuint256(0);
-        Nox.allowThis(balance);
-        Nox.allow(balance, owner);
-    }
+    constructor() {}
 
     function deposit(externalEuint256 inputHandle, bytes calldata inputProof) external {
         euint256 amount = Nox.fromExternal(inputHandle, inputProof);
-        balance = Nox.add(balance, amount);
-        Nox.allowThis(balance);
-        Nox.allow(balance, owner);
+        if (!isInitialized[msg.sender]) {
+            balances[msg.sender] = Nox.toEuint256(0);
+            isInitialized[msg.sender] = true;
+        }
+
+        balances[msg.sender] = Nox.add(balances[msg.sender], amount);
+        Nox.allowThis(balances[msg.sender]);
+        Nox.allow(balances[msg.sender], msg.sender);
         emit Deposited(msg.sender);
     }
 
     function withdraw(externalEuint256 inputHandle, bytes calldata inputProof) external {
-        require(msg.sender == owner, "Not owner");
+        require(isInitialized[msg.sender], "No active piggy bank balance");
         euint256 amount = Nox.fromExternal(inputHandle, inputProof);
-        balance = Nox.sub(balance, amount);
-        Nox.allowThis(balance);
-        Nox.allow(balance, owner);
+        balances[msg.sender] = Nox.sub(balances[msg.sender], amount);
+        Nox.allowThis(balances[msg.sender]);
+        Nox.allow(balances[msg.sender], msg.sender);
         emit Withdrawn(msg.sender);
     }
+
+    function getBalance(address account) external view returns (euint256) {
+        return balances[account];
+    }
 }
+

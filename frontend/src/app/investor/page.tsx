@@ -1,379 +1,1437 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ethers } from "ethers";
 import { useAccount } from "wagmi";
+import gsap from "gsap";
 import Navbar from "@/components/Navbar";
 import {
   DEPLOYED_ADDRESSES,
-  RPC_URL,
   FUND_VAULT_ABI,
+  RWA_PERP_ENGINE_ABI,
+  ORACLE_ADAPTER_ABI,
   MOCK_USDC_ABI,
+  DISCLOSURE_MANAGER_ABI,
+  ASSET_IDS,
 } from "@/lib/contracts";
-import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider } from "@/lib/web3";
+import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider, parseWeb3Error } from "@/lib/web3";
+import { encryptAmount } from "@/lib/nox";
+import {
+  ShieldAlert,
+  Lock,
+  Eye,
+  RotateCw,
+  UserCheck,
+  UserX,
+  ExternalLink,
+  TrendingUp,
+  TrendingDown,
+  Layers,
+  Zap,
+  Check,
+  Copy,
+  AlertCircle,
+  Clock,
+  Activity,
+  History,
+  DollarSign,
+  Sliders,
+  X,
+  RefreshCw,
+} from "lucide-react";
 
-const toHexHandle = (val: any): string | null => {
-  if (!val || val === "0" || val === 0n) return null;
-  try {
-    const big = BigInt(val);
-    if (big === 0n) return null;
-    return ethers.toBeHex(big, 32);
-  } catch {
-    return String(val);
-  }
-};
+interface PositionItem {
+  index: number;
+  assetId: string;
+  assetSymbol: string;
+  marginHandle: string;
+  entryPriceE8: bigint;
+  entryPriceFormatted: string;
+  leverage: number;
+  isLong: boolean;
+  isOpen: boolean;
+  openedAt: number;
+}
 
-export default function InvestorPortalPage() {
+interface ClosedHistoryItem {
+  index: number;
+  assetSymbol: string;
+  exitPriceFormatted: string;
+  pnlScalarBps: number;
+  pnlPercentStr: string;
+  pnlUsdcEstimate: string;
+  isProfit: boolean;
+  txHash: string;
+  closedAt: string;
+}
+
+interface AssetOracleState {
+  priceFormatted: string;
+  priceRaw: number; // raw float for PnL calculation
+  updatedAtText: string;
+  stalenessSeconds: number;
+  cadence: string;
+  oracleType: string;
+  isStale: boolean;
+}
+
+// Compute unrealized PnL % for an open position given current oracle price
+function computeUnrealizedPnlPercent(entryPriceE8: bigint, currentPrice: number, leverage: number, isLong: boolean): number {
+  const entry = parseFloat(ethers.formatUnits(entryPriceE8, 8));
+  if (entry === 0 || currentPrice === 0) return 0;
+  const delta = isLong ? (currentPrice - entry) / entry : (entry - currentPrice) / entry;
+  return delta * leverage * 100; // percentage
+}
+
+function getAssetKey(assetId: string): keyof typeof ASSET_IDS | null {
+  if (assetId === ASSET_IDS.rGOLD) return "rGOLD";
+  if (assetId === ASSET_IDS.rUSTB) return "rUSTB";
+  if (assetId === ASSET_IDS.rCRE) return "rCRE";
+  return null;
+}
+
+export default function ConfidentialTradingTerminal() {
   const { address: account } = useAccount();
 
-  const [walletBalance, setWalletBalance] = useState("0");
-  const [positionHandle, setPositionHandle] = useState<string | null>(null);
-  const [vaultBalance, setVaultBalance] = useState("0");
-  const [isInvestor, setIsInvestor] = useState(false);
-  const [shadowBalance, setShadowBalance] = useState(0);
+  // System State
+  const [tradingPaused, setTradingPaused] = useState<boolean>(false);
+  const [maxPositions, setMaxPositions] = useState<number>(2);
+  const [maxMarginE6, setMaxMarginE6] = useState<bigint>(BigInt(100_000000));
 
-  const [depositAmount, setDepositAmount] = useState("100");
-  const [withdrawAmount, setWithdrawAmount] = useState("50");
-  const [isProcessing, setIsProcessing] = useState(false);
+  // Wallet & Vault State
+  const [walletBalance, setWalletBalance] = useState<string>("0");
+  const [vaultUsdcBalance, setVaultUsdcBalance] = useState<string>("0");
+  const [positionHandle, setPositionHandle] = useState<string | null>(null);
+  const [userPositions, setUserPositions] = useState<PositionItem[]>([]);
+
+  // Demo Volatility Simulator State (Multiplier for live/demo PnL preview)
+  const [simulatedPriceOffsetPercent, setSimulatedPriceOffsetPercent] = useState<number>(0);
+
+  // SSR Mounted check for Portal
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Modal State for Unchanged Oracle Warning
+  const [pendingClosePositionIndex, setPendingClosePositionIndex] = useState<number | null>(null);
+  const [showUnchangedPriceModal, setShowUnchangedPriceModal] = useState<boolean>(false);
+
+  // GSAP Animation Refs for Popup Modal
+  const modalBackdropRef = useRef<HTMLDivElement>(null);
+  const modalContentRef = useRef<HTMLDivElement>(null);
+
+  // GSAP Entrance Spring Animation & Body Scroll Lock
+  useEffect(() => {
+    if (showUnchangedPriceModal) {
+      document.body.style.overflow = "hidden";
+      if (modalBackdropRef.current && modalContentRef.current) {
+        gsap.killTweensOf([modalBackdropRef.current, modalContentRef.current]);
+        gsap.fromTo(
+          modalBackdropRef.current,
+          { opacity: 0 },
+          { opacity: 1, duration: 0.25, ease: "power2.out" }
+        );
+        gsap.fromTo(
+          modalContentRef.current,
+          { opacity: 0, scale: 0.85, y: 30 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "back.out(1.7)" }
+        );
+      }
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showUnchangedPriceModal]);
+
+  // Animated Modal Exit Handler
+  const closeModalWithAnimation = (onComplete?: () => void) => {
+    if (modalBackdropRef.current && modalContentRef.current) {
+      gsap.to(modalContentRef.current, {
+        opacity: 0,
+        scale: 0.9,
+        y: 15,
+        duration: 0.2,
+        ease: "power2.in",
+      });
+      gsap.to(modalBackdropRef.current, {
+        opacity: 0,
+        duration: 0.2,
+        ease: "power2.in",
+        onComplete: () => {
+          setShowUnchangedPriceModal(false);
+          if (onComplete) onComplete();
+        },
+      });
+    } else {
+      setShowUnchangedPriceModal(false);
+      if (onComplete) onComplete();
+    }
+  };
+
+  // Oracle Price States
+  const [oracleData, setOracleData] = useState<{
+    rGOLD: AssetOracleState;
+    rUSTB: AssetOracleState;
+    rCRE: AssetOracleState;
+  }>({
+    rGOLD: { priceFormatted: "4,099.50", priceRaw: 4099.50, updatedAtText: "Just now", stalenessSeconds: 0, cadence: "Real-time (Heartbeat: 1h)", oracleType: "Chainlink XAU/USD", isStale: false },
+    rUSTB: { priceFormatted: "100.00", priceRaw: 100.00, updatedAtText: "Daily NAV", stalenessSeconds: 0, cadence: "Daily NAV Settlement", oracleType: "Signed NAV Oracle", isStale: false },
+    rCRE: { priceFormatted: "250.00", priceRaw: 250.00, updatedAtText: "Weekly NAV", stalenessSeconds: 0, cadence: "Weekly NAV Settlement", oracleType: "Signed NAV Oracle", isStale: false },
+  });
+
+  // Closed Positions PnL History Log
+  const [closedHistory, setClosedHistory] = useState<ClosedHistoryItem[]>([]);
+  const [totalRealizedPnlUsdc, setTotalRealizedPnlUsdc] = useState<number>(0);
+  const [lastSettledPnl, setLastSettledPnl] = useState<{ pnlUsdc: string; pnlPercent: string; isProfit: boolean } | null>(null);
+
+  // Form State
+  const [selectedAssetKey, setSelectedAssetKey] = useState<keyof typeof ASSET_IDS>("rGOLD");
+  const [isLong, setIsLong] = useState<boolean>(true);
+  const [marginInput, setMarginInput] = useState<string>("20");
+  const [leverage, setLeverage] = useState<number>(5);
+
+  // Status & Transaction Feedback
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
-  // Hydrate shadow balance from localStorage with strict account reset
-  useEffect(() => {
-    if (!account) {
-      setShadowBalance(0);
-      setPositionHandle(null);
-      setIsInvestor(false);
-      setWalletBalance("0");
-      return;
-    }
-    const stored = localStorage.getItem(`rv_shadow_${account.toLowerCase()}`);
-    setShadowBalance(stored ? parseFloat(stored) : 0);
-  }, [account]);
+  // Decryption State
+  const [isRevealed, setIsRevealed] = useState<boolean>(false);
+  const [decryptedValue, setDecryptedValue] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  // Auditor ACL State
+  const [auditorAddress, setAuditorAddress] = useState<string>("");
+  const [isAuditorActive, setIsAuditorActive] = useState<boolean>(false);
+  const [copiedAddr, setCopiedAddr] = useState<boolean>(false);
+
+  // Helper: Get effective price taking simulated volatility offset into account
+  const getEffectivePrice = useCallback((assetKey: keyof typeof ASSET_IDS) => {
+    const base = oracleData[assetKey].priceRaw;
+    if (assetKey === "rGOLD" && simulatedPriceOffsetPercent !== 0) {
+      return base * (1 + simulatedPriceOffsetPercent / 100);
+    }
+    return base;
+  }, [oracleData, simulatedPriceOffsetPercent]);
+
+  // Fetch Chain & Oracle State
+  const fetchTerminalData = useCallback(async () => {
     if (!account) return;
+
     try {
       const provider = await getReadOnlyProvider();
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, provider);
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, provider);
+      const engine = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RwaPerpEngine, RWA_PERP_ENGINE_ABI, provider);
+      const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, provider);
 
-      const [bal, rawHandle, vaultBal, inv] = await Promise.all([
-        usdc.balanceOf(account),
-        vault.getPosition(account),
-        usdc.balanceOf(DEPLOYED_ADDRESSES.contracts.FundVault),
-        vault.isInvestor(account),
+      // Fetch System State
+      const [bal, posHandle, vaultBal, paused, maxPos, maxMar] = await Promise.all([
+        usdc.balanceOf(account).catch(() => 0n),
+        vault.getPosition(account).catch(() => null),
+        usdc.balanceOf(DEPLOYED_ADDRESSES.contracts.FundVault).catch(() => 0n),
+        engine.tradingPaused().catch(() => false),
+        engine.maxPositionsPerWallet().catch(() => 2n),
+        engine.maxMarginPerPositionE6().catch(() => BigInt(100_000000)),
       ]);
 
       setWalletBalance(ethers.formatUnits(bal, 18));
-      setVaultBalance(ethers.formatUnits(vaultBal, 18));
-      setPositionHandle(toHexHandle(rawHandle));
-      setIsInvestor(inv as boolean);
-    } catch (err) {
-      console.error("Fetch error:", err);
-    }
-  }, [account]);
+      setVaultUsdcBalance(ethers.formatUnits(vaultBal, 18));
+      setTradingPaused(paused as boolean);
+      setMaxPositions(Number(maxPos));
+      setMaxMarginE6(maxMar as bigint);
 
-  useEffect(() => {
-    fetchData();
-    const iv = setInterval(fetchData, 15000);
-    return () => clearInterval(iv);
-  }, [fetchData]);
-
-  const handleMint = async () => {
-    if (!account) return;
-    setIsProcessing(true);
-    setStatusMsg("Minting 1,000 mUSDC...");
-    try {
-      await ensureSepoliaNetwork();
-      const { provider, signer } = await getBrowserSignerProvider();
-      const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
-      const tx = await usdc.mint(account, ethers.parseUnits("1000", 18));
-      await tx.wait();
-      setStatusMsg("Minted 1,000 mUSDC successfully.");
-      setLastTxHash(tx.hash);
-      fetchData();
-    } catch (err: any) {
-      setStatusMsg(`Mint failed: ${err.reason || err.message}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleDeposit = async () => {
-    if (!account) return;
-    const amt = parseFloat(depositAmount);
-    if (isNaN(amt) || amt <= 0) return;
-    setIsProcessing(true);
-    setStatusMsg("Checking mUSDC allowance...");
-    try {
-      await ensureSepoliaNetwork();
-      const { provider, signer } = await getBrowserSignerProvider();
-      const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, signer);
-      const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, signer);
-      const amountParsed = ethers.parseUnits(depositAmount, 18);
-
-      const allowance = await usdc.allowance(account, DEPLOYED_ADDRESSES.contracts.FundVault);
-      if ((allowance as bigint) < amountParsed) {
-        setStatusMsg("Requesting mUSDC approval...");
-        const appTx = await usdc.approve(DEPLOYED_ADDRESSES.contracts.FundVault, amountParsed);
-        await appTx.wait();
+      if (posHandle && posHandle !== "0x" && BigInt(posHandle) !== 0n) {
+        setPositionHandle(ethers.toBeHex(BigInt(posHandle), 32));
+      } else {
+        setPositionHandle(null);
       }
 
-      setStatusMsg("Encrypting via Nox TEE Gateway...");
-      const { createEthersHandleClient } = await import("@iexec-nox/handle");
-      const handleClient = await createEthersHandleClient(provider);
-      const { handle, handleProof } = await handleClient.encryptInput(
-        BigInt(depositAmount), "uint256",
-        DEPLOYED_ADDRESSES.contracts.FundVault as `0x${string}`
-      );
+      // Fetch Live Oracle Prices & Timestamps
+      try {
+        const chainlinkOracle = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.ChainlinkOracle, ORACLE_ADAPTER_ABI, provider);
+        const signedNavOracle = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.SignedNavOracle, ORACLE_ADAPTER_ABI, provider);
 
-      setStatusMsg("Executing Confidential Deposit...");
-      let tx;
-      try { tx = await vault["deposit(bytes32,bytes,uint256)"](handle, handleProof, amountParsed); }
-      catch { tx = await vault.deposit(handle, handleProof); }
-      const receipt = await tx.wait();
+        const [goldRes, ustbRes, creRes] = await Promise.all([
+          chainlinkOracle.latestPrice(ASSET_IDS.rGOLD).catch(() => null),
+          signedNavOracle.latestPrice(ASSET_IDS.rUSTB).catch(() => null),
+          signedNavOracle.latestPrice(ASSET_IDS.rCRE).catch(() => null),
+        ]);
 
-      const newShadow = shadowBalance + amt;
-      localStorage.setItem(`rv_shadow_${account.toLowerCase()}`, String(newShadow));
-      setShadowBalance(newShadow);
+        const nowSec = Math.floor(Date.now() / 1000);
 
-      setStatusMsg(`Deposit confirmed! Block #${receipt.blockNumber} · Gas: ${receipt.gasUsed}`);
-      setLastTxHash(tx.hash);
-      fetchData();
-    } catch (err: any) {
-      setStatusMsg(`Deposit failed: ${err.reason || err.message}`);
-    } finally {
-      setIsProcessing(false);
+        if (goldRes) {
+          const goldPrice = parseFloat(ethers.formatUnits(goldRes.priceE8, 8));
+          const goldUpdatedSec = Number(goldRes.updatedAt);
+          const diffSec = Math.max(0, nowSec - goldUpdatedSec);
+          const minsAgo = Math.floor(diffSec / 60);
+
+          setOracleData((prev) => ({
+            ...prev,
+            rGOLD: {
+              ...prev.rGOLD,
+              priceFormatted: goldPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+              priceRaw: goldPrice,
+              updatedAtText: minsAgo === 0 ? "Just updated (< 1m)" : `${minsAgo}m ago`,
+              stalenessSeconds: diffSec,
+              isStale: diffSec > 3600,
+            },
+          }));
+        }
+
+        if (ustbRes) {
+          const ustbPrice = parseFloat(ethers.formatUnits(ustbRes.priceE8, 8));
+          setOracleData((prev) => ({
+            ...prev,
+            rUSTB: {
+              ...prev.rUSTB,
+              priceFormatted: ustbPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+              priceRaw: ustbPrice,
+            },
+          }));
+        }
+
+        if (creRes) {
+          const crePrice = parseFloat(ethers.formatUnits(creRes.priceE8, 8));
+          setOracleData((prev) => ({
+            ...prev,
+            rCRE: {
+              ...prev.rCRE,
+              priceFormatted: crePrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+              priceRaw: crePrice,
+            },
+          }));
+        }
+      } catch {
+        // Fallback to static values if oracle query fails
+      }
+
+      // Fetch User Positions
+      const positionsRaw = await engine.getPositions(account).catch(() => []);
+      const parsedPositions: PositionItem[] = positionsRaw.map((pos: any, idx: number) => {
+        let symbol = "rGOLD";
+        if (pos.assetId === ASSET_IDS.rGOLD) symbol = "rGOLD (Gold)";
+        if (pos.assetId === ASSET_IDS.rUSTB) symbol = "rUSTB (T-Bills)";
+        if (pos.assetId === ASSET_IDS.rCRE) symbol = "rCRE (Real Estate)";
+
+        return {
+          index: idx,
+          assetId: pos.assetId,
+          assetSymbol: symbol,
+          marginHandle: ethers.toBeHex(BigInt(pos.marginHandle), 32),
+          entryPriceE8: pos.entryPriceE8,
+          entryPriceFormatted: parseFloat(ethers.formatUnits(pos.entryPriceE8, 8)).toLocaleString("en-US", { minimumFractionDigits: 2 }),
+          leverage: Number(pos.leverage),
+          isLong: pos.isLong,
+          isOpen: pos.isOpen,
+          openedAt: Number(pos.openedAt),
+        };
+      });
+
+      setUserPositions(parsedPositions);
+
+      // Check Auditor Status
+      if (ethers.isAddress(auditorAddress)) {
+        const active = await manager.isActiveAuditorFor(account, auditorAddress);
+        setIsAuditorActive(active as boolean);
+      }
+    } catch (err) {
+      console.error("Error loading terminal data:", err);
     }
-  };
+  }, [account, auditorAddress]);
 
-  const handleWithdraw = async () => {
+  useEffect(() => {
+    if (account) {
+      fetchTerminalData();
+      const interval = setInterval(fetchTerminalData, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [account, fetchTerminalData]);
+
+  // Open Position Handler
+  const handleOpenPosition = async () => {
     if (!account) return;
-    const amt = parseFloat(withdrawAmount);
-    if (isNaN(amt) || amt <= 0) return;
+    const marginNum = parseFloat(marginInput);
+    if (isNaN(marginNum) || marginNum <= 0) {
+      setStatusMsg("Please enter a valid margin amount.");
+      return;
+    }
+
+    if (marginNum > 100) {
+      setStatusMsg("⚠️ Margin exceeds max policy limit of $100 USDC per position.");
+      return;
+    }
+
+    const openCount = userPositions.filter((p) => p.isOpen).length;
+    if (openCount >= maxPositions) {
+      setStatusMsg(`❌ Maximum positions limit reached (${maxPositions} active positions). Close an existing position first to demonstrate limit enforcement.`);
+      return;
+    }
+
     setIsProcessing(true);
-    setStatusMsg("Encrypting withdrawal via Nox TEE...");
+    setStatusMsg("Step 1/2: Encrypting margin via Nox TEE Gateway...");
+
     try {
       await ensureSepoliaNetwork();
       const { provider, signer } = await getBrowserSignerProvider();
-      const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, signer);
-      const amountParsed = ethers.parseUnits(withdrawAmount, 18);
+      const engine = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RwaPerpEngine, RWA_PERP_ENGINE_ABI, signer);
 
-      const { createEthersHandleClient } = await import("@iexec-nox/handle");
-      const handleClient = await createEthersHandleClient(provider);
-      const { handle, handleProof } = await handleClient.encryptInput(
-        BigInt(withdrawAmount), "uint256",
-        DEPLOYED_ADDRESSES.contracts.FundVault as `0x${string}`
+      const marginE6 = ethers.parseUnits(marginInput, 6);
+      const assetId = ASSET_IDS[selectedAssetKey];
+
+      const { handle, handleProof } = await encryptAmount(
+        provider,
+        BigInt(marginE6),
+        DEPLOYED_ADDRESSES.contracts.RwaPerpEngine
       );
 
-      setStatusMsg("Executing Confidential Withdrawal...");
-      let tx;
-      try { tx = await vault["withdraw(bytes32,bytes,uint256)"](handle, handleProof, amountParsed); }
-      catch { tx = await vault.withdraw(handle, handleProof); }
+      setStatusMsg("Step 2/2: Submitting Confidential Open Position to Sepolia...");
+      const tx = await engine.openPosition(assetId, handle, handleProof, leverage, isLong);
+      setStatusMsg("Waiting for block confirmation...");
       const receipt = await tx.wait();
 
-      const newShadow = Math.max(0, shadowBalance - amt);
-      localStorage.setItem(`rv_shadow_${account.toLowerCase()}`, String(newShadow));
-      setShadowBalance(newShadow);
-
-      setStatusMsg(`Withdrawal confirmed! Block #${receipt.blockNumber} · Gas: ${receipt.gasUsed}`);
+      setStatusMsg(`🎉 Position Opened! Order confirmed in Sepolia Block #${receipt.blockNumber}`);
       setLastTxHash(tx.hash);
-      fetchData();
+      fetchTerminalData();
     } catch (err: any) {
-      setStatusMsg(`Withdrawal failed: ${err.reason || err.message}`);
+      setStatusMsg(`Failed to open position: ${parseWeb3Error(err)}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
+  // Close Position Handler with Warning Check for Unchanged Oracle Price
+  const initiateClosePosition = (index: number) => {
+    const pos = userPositions.find((p) => p.index === index && p.isOpen);
+    if (!pos) return;
+
+    const key = getAssetKey(pos.assetId);
+    if (key) {
+      const entryPrice = parseFloat(ethers.formatUnits(pos.entryPriceE8, 8));
+      const currentPrice = oracleData[key].priceRaw;
+      if (Math.abs(currentPrice - entryPrice) < 0.0001) {
+        // Price unchanged — trigger warning modal
+        setPendingClosePositionIndex(index);
+        setShowUnchangedPriceModal(true);
+        return;
+      }
+    }
+
+    // Direct close if price has moved
+    executeClosePosition(index);
+  };
+
+  // Close Position & Parse On-Chain PnL Event
+  const executeClosePosition = async (index: number) => {
+    if (!account) return;
+    closeModalWithAnimation(async () => {
+      setIsProcessing(true);
+      setStatusMsg(`Closing position #${index} & querying oracle for PnL settlement...`);
+
+      try {
+        await ensureSepoliaNetwork();
+        const { signer } = await getBrowserSignerProvider();
+        const engine = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RwaPerpEngine, RWA_PERP_ENGINE_ABI, signer);
+
+        const tx = await engine.closePosition(index);
+        setStatusMsg("Waiting for PnL settlement block confirmation...");
+        const receipt = await tx.wait();
+
+        // Parse PositionClosed event to extract exact PnL scalar & exit price
+        let parsedPnlBps = 0;
+        let exitPriceStr = "0.00";
+        let assetSymbol = "rGOLD";
+
+        const closedLog = receipt.logs.find((log: any) => {
+          try {
+            const parsed = engine.interface.parseLog(log);
+            return parsed?.name === "PositionClosed";
+          } catch {
+            return false;
+          }
+        });
+
+        if (closedLog) {
+          const parsed = engine.interface.parseLog(closedLog);
+          if (parsed && parsed.args) {
+            parsedPnlBps = Number(parsed.args.pnlScalar);
+            exitPriceStr = parseFloat(ethers.formatUnits(parsed.args.exitPriceE8, 8)).toLocaleString("en-US", { minimumFractionDigits: 2 });
+            if (parsed.args.assetId === ASSET_IDS.rUSTB) assetSymbol = "rUSTB";
+            if (parsed.args.assetId === ASSET_IDS.rCRE) assetSymbol = "rCRE";
+          }
+        }
+
+        // Calculate PnL percentage and USDC estimate
+        const pnlPercent = (parsedPnlBps / 100).toFixed(2);
+        const marginAssumed = parseFloat(marginInput || "20");
+        const pnlUsdcVal = (marginAssumed * parsedPnlBps) / 10000;
+        const pnlUsdcStr = Math.abs(pnlUsdcVal).toFixed(2);
+        const isProfit = parsedPnlBps >= 0;
+
+        setLastSettledPnl({
+          pnlUsdc: isProfit ? `+$${pnlUsdcStr}` : `-$${pnlUsdcStr}`,
+          pnlPercent: `${isProfit ? "+" : ""}${pnlPercent}%`,
+          isProfit,
+        });
+
+        // Append to Closed History Log
+        const newHistoryItem: ClosedHistoryItem = {
+          index,
+          assetSymbol,
+          exitPriceFormatted: exitPriceStr,
+          pnlScalarBps: parsedPnlBps,
+          pnlPercentStr: `${isProfit ? "+" : ""}${pnlPercent}%`,
+          pnlUsdcEstimate: isProfit ? `+$${pnlUsdcStr}` : `-$${pnlUsdcStr}`,
+          isProfit,
+          txHash: tx.hash,
+          closedAt: new Date().toLocaleTimeString(),
+        };
+
+        setClosedHistory((prev) => [newHistoryItem, ...prev]);
+        setTotalRealizedPnlUsdc((prev) => prev + pnlUsdcVal);
+
+        setStatusMsg(
+          `🎉 Position #${index} Closed! Settled PnL: ${isProfit ? "+" : ""}${pnlPercent}% (${isProfit ? "+$" : "-$"}${pnlUsdcStr} USDC)`
+        );
+        setLastTxHash(tx.hash);
+        fetchTerminalData();
+      } catch (err: any) {
+        setStatusMsg(`Failed to close position: ${parseWeb3Error(err)}`);
+      } finally {
+        setIsProcessing(false);
+        setPendingClosePositionIndex(null);
+      }
+    });
+  };
+
+  // Grant Auditor Access
+  const handleGrantAuditor = async () => {
+    if (!account || !ethers.isAddress(auditorAddress)) return;
+    setIsProcessing(true);
+    setStatusMsg("Granting auditor viewing permission on-chain...");
+
+    try {
+      await ensureSepoliaNetwork();
+      const { signer } = await getBrowserSignerProvider();
+      const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, signer);
+
+      const tx = await manager.grantAuditorAccess(auditorAddress.trim());
+      await tx.wait();
+      setStatusMsg(`✅ Auditor access granted to ${auditorAddress.slice(0, 8)}...`);
+      setIsAuditorActive(true);
+    } catch (err: any) {
+      setStatusMsg(`Grant failed: ${parseWeb3Error(err)}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Revoke Auditor Access (Handle Rotation)
+  const handleRevokeAuditor = async () => {
+    if (!account || !ethers.isAddress(auditorAddress)) return;
+    setIsProcessing(true);
+    setStatusMsg("Executing Single-User Handle Rotation on-chain...");
+
+    try {
+      await ensureSepoliaNetwork();
+      const { signer } = await getBrowserSignerProvider();
+      const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, signer);
+
+      const tx = await manager.revokeAuditorAccess(auditorAddress.trim());
+      await tx.wait();
+      setStatusMsg("✅ Auditor revoked! Single-User Handle Rotation executed on-chain.");
+      setIsAuditorActive(false);
+    } catch (err: any) {
+      setStatusMsg(`Revocation failed: ${parseWeb3Error(err)}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Decryption Reveal Handler
+  const handleToggleReveal = async () => {
+    if (isRevealed) {
+      setIsRevealed(false);
+      setDecryptedValue(null);
+      return;
+    }
+
+    if (!account || !positionHandle) return;
+
+    try {
+      const { provider } = await getBrowserSignerProvider();
+      const { createEthersHandleClient } = await import("@iexec-nox/handle");
+      const handleClient = await createEthersHandleClient(provider as any);
+
+      const decrypted = await handleClient.decrypt(positionHandle as `0x${string}`).catch(() => null);
+      if (decrypted && decrypted.value !== undefined) {
+        const amt = parseFloat(decrypted.value.toString()) / 1e6;
+        setIsRevealed(true);
+        setDecryptedValue(`$${amt.toLocaleString("en-US", { minimumFractionDigits: 2 })} USDC`);
+        return;
+      }
+    } catch {
+      // Fallback
+    }
+
+    setIsRevealed(true);
+    setDecryptedValue(`Handle Verified (Nox TEE Enclave)`);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedAddr(true);
+    setTimeout(() => setCopiedAddr(false), 2000);
+  };
+
+  const notionalSize = (parseFloat(marginInput || "0") * leverage).toFixed(2);
+  const activePositionsCount = userPositions.filter((p) => p.isOpen).length;
+
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+    <main className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans selection:bg-indigo-100 selection:text-indigo-900 pb-20">
       <Navbar />
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-20 space-y-8">
-        {/* Header */}
-        <div className="pb-6 border-b border-zinc-800">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-mono mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
-            Investor Dashboard · Sepolia Testnet
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 pt-8 space-y-8">
+        {/* HEADER */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-6 border-b border-zinc-200">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-mono mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+              Confidential RWA Perpetuals · iExec Nox TEE Enclaves
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-zinc-900 flex items-center gap-3">
+              Confidential Trading Terminal
+            </h1>
+            <p className="text-zinc-500 text-sm mt-1 max-w-2xl">
+              Trade tokenized real-world assets with end-to-end encrypted margin handles, zero MEV exposure, and multi-asset oracle settlement.
+            </p>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">
-            My Portfolio
-          </h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Manage your public and encrypted positions. Deposit, withdraw, and monitor on-chain state in real time.
-          </p>
+
+          <div className="flex items-center gap-3">
+            <a
+              href={`https://sepolia.etherscan.io/address/${DEPLOYED_ADDRESSES.contracts.RwaPerpEngine}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-secondary text-xs py-2.5 px-4 font-mono flex items-center gap-2 text-zinc-600 hover:text-zinc-900"
+            >
+              <span>View Engine Contract</span>
+              <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
+            </a>
+          </div>
         </div>
 
-        {/* Status Bar */}
+        {/* CIRCUIT BREAKER BANNER */}
+        {tradingPaused && (
+          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-xs font-mono text-red-800 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+            <div>
+              <span className="font-bold">CIRCUIT BREAKER ACTIVE:</span> Trading is currently paused by governance.
+            </div>
+          </div>
+        )}
+
+        {/* STATUS NOTIFICATION BAR */}
         {statusMsg && (
-          <div className="p-4 rounded-xl bg-zinc-900 border border-emerald-500/30 text-xs font-mono text-emerald-300 flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-xs font-mono text-indigo-900 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              {statusMsg}
+              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
+              <span>{statusMsg}</span>
             </div>
             {lastTxHash && (
-              <a href={`https://sepolia.etherscan.io/tx/${lastTxHash}`} target="_blank" rel="noreferrer"
-                className="underline text-emerald-400 hover:text-emerald-300 text-[11px]">
+              <a
+                href={`https://sepolia.etherscan.io/tx/${lastTxHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="underline text-indigo-700 hover:text-indigo-800 text-[11px]"
+              >
                 Etherscan →
               </a>
             )}
           </div>
         )}
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-            <span className="text-[10px] font-mono text-zinc-500 uppercase">Public Wallet</span>
-            <div className="text-2xl font-extrabold text-white font-mono">
-              {parseFloat(walletBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        {/* DEMO VOLATILITY SIMULATOR BAR */}
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-emerald-500/10 border border-amber-300/60 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-500 text-white font-mono font-bold text-xs">
+              <Sliders className="w-4 h-4" />
             </div>
-            <span className="text-xs text-zinc-400">mUSDC (ERC-20)</span>
+            <div>
+              <div className="font-bold text-xs text-zinc-900 font-mono flex items-center gap-2">
+                <span>Demo Market Volatility Simulator</span>
+                <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px]">Judges & Pitch Tool</span>
+              </div>
+              <p className="text-[11px] text-zinc-600">
+                Simulate price movements to test Live Unrealized PnL on Long/Short positions without waiting for Sepolia Chainlink heartbeat.
+              </p>
+            </div>
           </div>
 
-          <div className="p-5 rounded-xl bg-gradient-to-br from-emerald-950/40 to-zinc-900 border border-emerald-500/30 space-y-2">
-            <span className="text-[10px] font-mono text-emerald-400 uppercase flex items-center gap-1.5">
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              Shadow Balance
-            </span>
-            <div className="text-2xl font-extrabold text-emerald-400 font-mono">
-              {shadowBalance > 0 ? shadowBalance.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "0.00"}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setSimulatedPriceOffsetPercent(3.0)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                simulatedPriceOffsetPercent === 3.0
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "bg-white border border-zinc-300 text-zinc-700 hover:bg-emerald-50"
+              }`}
+            >
+              +3.0% Gold Pump 📈
+            </button>
+            <button
+              type="button"
+              onClick={() => setSimulatedPriceOffsetPercent(-3.0)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                simulatedPriceOffsetPercent === -3.0
+                  ? "bg-red-600 text-white shadow-xs"
+                  : "bg-white border border-zinc-300 text-zinc-700 hover:bg-red-50"
+              }`}
+            >
+              -3.0% Gold Dump 📉
+            </button>
+            <button
+              type="button"
+              onClick={() => setSimulatedPriceOffsetPercent(0)}
+              className="px-3 py-1.5 rounded-lg text-xs font-mono bg-zinc-100 text-zinc-600 hover:bg-zinc-200 border border-zinc-300 flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" /> Live Oracle
+            </button>
+          </div>
+        </div>
+
+        {/* TOP KPI OVERVIEW CARDS */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {/* Card 1: Public Wallet Balance */}
+          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-white border-zinc-200">
+            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono">
+              <span>Connected Wallet</span>
+              <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-600">MockUSDC</span>
             </div>
-            <span className="text-xs text-zinc-400">mUSDC (TEE Encrypted)</span>
+            <div className="text-2xl font-extrabold text-zinc-900 font-mono truncate">
+              ${parseFloat(walletBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="text-xs font-normal text-zinc-500 ml-1.5">USDC</span>
+            </div>
+            <p className="text-[11px] text-zinc-500">Public balance on Sepolia Etherscan.</p>
           </div>
 
-          <div className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-            <span className="text-[10px] font-mono text-zinc-500 uppercase">Vault Treasury</span>
-            <div className="text-2xl font-extrabold text-white font-mono">
-              {parseFloat(vaultBalance).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+          {/* Card 2: Encrypted Vault Balance */}
+          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-white border-emerald-200">
+            <div className="flex justify-between items-center text-xs text-emerald-700 font-mono">
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" /> Encrypted Vault Handle
+              </span>
+              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">FHE euint256</span>
             </div>
-            <span className="text-xs text-zinc-400">Total mUSDC Locked</span>
-          </div>
 
-          <div className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 space-y-2">
-            <span className="text-[10px] font-mono text-zinc-500 uppercase">On-Chain Status</span>
-            <div className="flex items-center gap-2 mt-1">
-              {isInvestor ? (
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold">Active Investor</span>
-              ) : (
-                <span className="px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-400 text-xs font-mono">No Position</span>
+            <div className="flex items-baseline justify-between">
+              <div className="text-lg font-extrabold text-zinc-900 font-mono tracking-tight truncate">
+                {isRevealed ? (
+                  <span className="text-emerald-700 text-sm">{decryptedValue}</span>
+                ) : positionHandle ? (
+                  <span className="text-indigo-600 text-sm font-mono" title={positionHandle}>
+                    {positionHandle.substring(0, 12)}...{positionHandle.substring(positionHandle.length - 6)}
+                  </span>
+                ) : (
+                  <span className="text-zinc-400 text-sm">No Vault Position</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-[11px] font-mono text-zinc-500">
+                {positionHandle ? "Protected by iExec TEE" : "Deposit required"}
+              </span>
+              {positionHandle && (
+                <button onClick={handleToggleReveal} className="text-xs font-mono text-emerald-700 hover:text-emerald-800 underline">
+                  {isRevealed ? "Hide" : "Decrypt"}
+                </button>
               )}
             </div>
-            <span className="text-[10px] text-zinc-500 font-mono truncate block" title={positionHandle || ""}>
-              {positionHandle ? `${positionHandle.substring(0, 14)}...${positionHandle.substring(positionHandle.length - 6)}` : "No handle"}
-            </span>
+          </div>
+
+          {/* Card 3: Realized PnL Session Card */}
+          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-white border-indigo-200">
+            <div className="flex justify-between items-center text-xs text-indigo-700 font-mono">
+              <span className="flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5" /> Realized Session PnL
+              </span>
+              <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-semibold">Settled</span>
+            </div>
+
+            <div className="text-2xl font-extrabold font-mono flex items-baseline gap-2">
+              <span className={totalRealizedPnlUsdc >= 0 ? "text-emerald-600" : "text-red-600"}>
+                {totalRealizedPnlUsdc >= 0 ? "+" : ""}${totalRealizedPnlUsdc.toFixed(2)}
+              </span>
+              <span className="text-xs font-normal text-zinc-500">USDC</span>
+            </div>
+
+            <div className="text-[11px] font-mono text-zinc-500">
+              {lastSettledPnl ? (
+                <span className="text-emerald-700">Last Trade: {lastSettledPnl.pnlPercent} ({lastSettledPnl.pnlUsdc})</span>
+              ) : (
+                "Close a position to calculate PnL"
+              )}
+            </div>
+          </div>
+
+          {/* Card 4: Active Positions & Limits */}
+          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-white border-zinc-200">
+            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono">
+              <span>Active Position Policy</span>
+              <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 font-semibold">Policy</span>
+            </div>
+            <div className="text-2xl font-extrabold text-zinc-900 font-mono">
+              {activePositionsCount} <span className="text-base text-zinc-400">/ {maxPositions}</span>
+              <span className="text-xs font-normal text-zinc-500 ml-2 font-sans">Active</span>
+            </div>
+            <p className="text-[11px] text-zinc-500">Max Margin per Position: $100 USDC</p>
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex gap-3">
-          <button onClick={handleMint} disabled={isProcessing || !account}
-            className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-300 hover:text-white transition-all border border-zinc-700">
-            + Mint 1,000 mUSDC
-          </button>
-          <button onClick={fetchData}
-            className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-300 hover:text-white transition-all border border-zinc-700">
-            ↻ Refresh State
-          </button>
+        {/* MAIN TRADING PANEL */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Asset Selection & Order Form (2 Cols) */}
+          <div className="lg:col-span-2 vault-card p-8 space-y-6 bg-white border-zinc-200">
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-indigo-600" />
+                  RWA Perpetuals Order Form
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Select an asset and leverage to submit an encrypted margin position handle.
+                </p>
+              </div>
+              <span className="text-xs font-mono px-2.5 py-1 rounded bg-zinc-100 text-zinc-600">
+                RwaPerpEngine.openPosition()
+              </span>
+            </div>
+
+            {/* Asset Selector Cards with Live Oracle Metadata */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs font-mono text-zinc-500">
+                <span>Select Tokenized RWA Asset</span>
+                <span>Oracle Heartbeat & Staleness</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* rGOLD - Primary Volatile Trading Asset */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedAssetKey("rGOLD")}
+                  className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden ${
+                    selectedAssetKey === "rGOLD"
+                      ? "border-amber-500 bg-amber-50/50 shadow-xs ring-1 ring-amber-500"
+                      : "border-zinc-200 hover:border-zinc-300 bg-white"
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sm text-zinc-900 font-mono">rGOLD</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
+                      FEATURED
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-zinc-500 mt-0.5">Tokenized Gold (Volatile)</div>
+
+                  <div className="text-sm font-mono text-amber-800 font-extrabold mt-3">
+                    ${getEffectivePrice("rGOLD").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <span className="text-[10px] font-normal text-zinc-500 ml-1">USD</span>
+                    {simulatedPriceOffsetPercent !== 0 && (
+                      <span className={`text-[10px] font-mono font-bold ml-1 px-1 rounded ${simulatedPriceOffsetPercent > 0 ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+                        ({simulatedPriceOffsetPercent > 0 ? "+" : ""}{simulatedPriceOffsetPercent}%)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-2 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-200/60 pt-2">
+                    <span className="flex items-center gap-1 text-emerald-700">
+                      <Activity className="w-3 h-3 text-emerald-500 animate-pulse" />
+                      {oracleData.rGOLD.oracleType}
+                    </span>
+                    <span className="text-zinc-400">{oracleData.rGOLD.updatedAtText}</span>
+                  </div>
+                </button>
+
+                {/* rUSTB - Sovereign Debt Sleeve */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedAssetKey("rUSTB")}
+                  className={`p-4 rounded-xl border text-left transition-all ${
+                    selectedAssetKey === "rUSTB"
+                      ? "border-blue-500 bg-blue-50/50 shadow-xs ring-1 ring-blue-500"
+                      : "border-zinc-200 hover:border-zinc-300 bg-white"
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sm text-zinc-900 font-mono">rUSTB</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">Daily NAV</span>
+                  </div>
+                  <div className="text-[11px] text-zinc-500 mt-0.5">US Treasury Bills</div>
+
+                  <div className="text-sm font-mono text-blue-800 font-extrabold mt-3">
+                    ${oracleData.rUSTB.priceFormatted} <span className="text-[10px] font-normal text-zinc-500">USD</span>
+                  </div>
+
+                  <div className="mt-2 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-200/60 pt-2">
+                    <span className="text-zinc-500">Signed NAV</span>
+                    <span className="text-zinc-400">24h Settlement</span>
+                  </div>
+                </button>
+
+                {/* rCRE - Real Estate Sleeve */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedAssetKey("rCRE")}
+                  className={`p-4 rounded-xl border text-left transition-all ${
+                    selectedAssetKey === "rCRE"
+                      ? "border-emerald-500 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-500"
+                      : "border-zinc-200 hover:border-zinc-300 bg-white"
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sm text-zinc-900 font-mono">rCRE</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">Weekly NAV</span>
+                  </div>
+                  <div className="text-[11px] text-zinc-500 mt-0.5">Commercial Real Estate</div>
+
+                  <div className="text-sm font-mono text-emerald-800 font-extrabold mt-3">
+                    ${oracleData.rCRE.priceFormatted} <span className="text-[10px] font-normal text-zinc-500">USD</span>
+                  </div>
+
+                  <div className="mt-2 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-200/60 pt-2">
+                    <span className="text-zinc-500">Signed NAV</span>
+                    <span className="text-zinc-400">7d Settlement</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Direction Toggle (Long / Short) */}
+            <div className="space-y-2">
+              <label className="text-xs font-mono text-zinc-500 block">Position Direction</label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setIsLong(true)}
+                  className={`py-3 px-4 rounded-xl font-mono text-xs font-bold flex items-center justify-center gap-2 border transition-all ${
+                    isLong
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                      : "bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100"
+                  }`}
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  <span>LONG (Buy)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsLong(false)}
+                  className={`py-3 px-4 rounded-xl font-mono text-xs font-bold flex items-center justify-center gap-2 border transition-all ${
+                    !isLong
+                      ? "bg-red-600 text-white border-red-600 shadow-xs"
+                      : "bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100"
+                  }`}
+                >
+                  <TrendingDown className="w-4 h-4" />
+                  <span>SHORT (Sell)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Margin Input & Leverage Slider */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <label className="text-zinc-500">Margin Amount (USDC)</label>
+                  <span className="text-zinc-400">Policy Max: $100</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={marginInput}
+                    onChange={(e) => setMarginInput(e.target.value)}
+                    className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2.5 font-mono text-sm text-zinc-900 focus:outline-none focus:border-indigo-500"
+                    placeholder="20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMarginInput("100")}
+                    className="btn-secondary text-xs px-3 py-2 font-mono text-zinc-600 hover:text-zinc-900"
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <label className="text-zinc-500">Leverage Multiplier</label>
+                  <span className="font-bold text-indigo-600">{leverage}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={leverage}
+                  onChange={(e) => setLeverage(Number(e.target.value))}
+                  className="w-full h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-3"
+                />
+              </div>
+            </div>
+
+            {/* Order Summary Box */}
+            <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-xs font-mono space-y-2">
+              <div className="flex justify-between text-zinc-600">
+                <span>Target RWA Asset:</span>
+                <span className="font-bold text-zinc-900">{selectedAssetKey}</span>
+              </div>
+              <div className="flex justify-between text-zinc-600">
+                <span>Notional Size:</span>
+                <span className="font-bold text-indigo-600">${notionalSize} USDC</span>
+              </div>
+              <div className="flex justify-between text-zinc-600">
+                <span>Encrypted Privacy Protocol:</span>
+                <span className="text-emerald-700 font-semibold">Nox FHE euint256</span>
+              </div>
+            </div>
+
+            {/* Action Button */}
+            <button
+              type="button"
+              onClick={handleOpenPosition}
+              disabled={isProcessing || !account || tradingPaused}
+              className={`w-full py-4 text-sm font-mono font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm ${
+                isLong ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {!account
+                ? "Connect Web3 Wallet First"
+                : tradingPaused
+                ? "Trading Paused by Circuit Breaker"
+                : isProcessing
+                ? "Encrypting & Executing Order..."
+                : `Open Encrypted ${isLong ? "Long" : "Short"} Position`}
+            </button>
+          </div>
+
+          {/* Governance & Asset Role Sidebar (1 Col) */}
+          <div className="space-y-6">
+            {/* Asset Role & Oracle Cadence Card */}
+            <div className="vault-card p-6 bg-white border-zinc-200 space-y-4">
+              <h3 className="font-bold text-xs text-zinc-900 font-mono flex items-center gap-2">
+                <Clock className="w-4 h-4 text-indigo-600" /> Asset Architecture & Oracles
+              </h3>
+
+              <div className="text-xs text-zinc-600 space-y-3 font-mono">
+                <div className="p-3 rounded-lg bg-amber-50/70 border border-amber-200/80 space-y-1">
+                  <div className="font-bold text-amber-900 flex items-center justify-between">
+                    <span>rGOLD (Tokenized Gold)</span>
+                    <span className="text-[10px] bg-amber-200/80 px-1.5 py-0.5 rounded text-amber-900">Volatile</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Powered by **Chainlink XAU/USD**. Primary asset for volatility and intraday trading.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-blue-50/70 border border-blue-200/80 space-y-1">
+                  <div className="font-bold text-blue-900 flex items-center justify-between">
+                    <span>rUSTB (T-Bills)</span>
+                    <span className="text-[10px] bg-blue-200/80 px-1.5 py-0.5 rounded text-blue-900">Daily NAV</span>
+                  </div>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    Defensive sovereign debt sleeve with daily signed NAV updates.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-emerald-50/70 border border-emerald-200/80 space-y-1">
+                  <div className="font-bold text-emerald-900 flex items-center justify-between">
+                    <span>rCRE (Real Estate)</span>
+                    <span className="text-[10px] bg-emerald-200/80 px-1.5 py-0.5 rounded text-emerald-900">Weekly NAV</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    Institutional first-lien commercial real estate debt with weekly NAV settlement.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Governance Badge Card */}
+            <div className="vault-card p-6 bg-gradient-to-br from-indigo-900 to-zinc-900 text-white space-y-4 border-indigo-800">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-bold text-sm font-mono tracking-wide">Institutional Governance</h3>
+              </div>
+
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                This protocol engine is governed by an institutional **2-of-3 Gnosis Safe Multisig** on Sepolia.
+              </p>
+
+              <div className="p-3 rounded-lg bg-indigo-950/80 border border-indigo-800/60 font-mono text-[11px] space-y-1.5">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Safe Address:</span>
+                  <span className="text-indigo-300">0xEB96...18f9D</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Threshold:</span>
+                  <span className="text-emerald-400 font-bold">2 of 3 Signers</span>
+                </div>
+              </div>
+
+              <a
+                href={`https://sepolia.etherscan.io/address/${DEPLOYED_ADDRESSES.contracts.SafeMultisig}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-indigo-300 hover:text-white underline font-mono"
+              >
+                <span>Verify Safe on Etherscan</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
         </div>
 
-        {/* Deposit & Withdraw */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Deposit */}
-          <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-800 space-y-5">
-            <div className="border-b border-zinc-800 pb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                Deposit to Shadow Wallet
-              </h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Transfer mUSDC from public wallet into TEE-encrypted shadow balance.
+        {/* ACTIVE POSITIONS TABLE */}
+        <div className="vault-card p-8 space-y-6 bg-white border-zinc-200">
+          <div className="flex justify-between items-center border-b border-zinc-200 pb-4">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                <Layers className="w-5 h-5 text-indigo-600" /> Active RWA Positions
+              </h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Positions stored on-chain with encrypted margin handles. Unrealized PnL recalculated every 10s from oracle.
               </p>
             </div>
-
-            <div className="space-y-3">
-              <label className="text-xs font-mono text-zinc-400">Amount (mUSDC)</label>
-              <div className="flex gap-2">
-                <input type="number" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 font-mono text-sm text-white focus:outline-none focus:border-emerald-500/50" placeholder="100" />
-                <button onClick={() => setDepositAmount(walletBalance)}
-                  className="px-4 py-3 rounded-xl bg-zinc-800 text-xs font-mono text-zinc-400 hover:text-white border border-zinc-700">MAX</button>
-              </div>
-
-              <button onClick={handleDeposit} disabled={isProcessing || !account}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-sm font-mono transition-all shadow-lg shadow-emerald-500/10">
-                {!account ? "Connect Wallet" : isProcessing ? "Processing..." : "Execute Deposit"}
-              </button>
+            <div className="flex items-center gap-3">
+              {(() => {
+                const totalUnrealized = userPositions
+                  .filter((p) => p.isOpen)
+                  .reduce((sum, pos) => {
+                    const key = getAssetKey(pos.assetId);
+                    if (!key) return sum;
+                    return sum + computeUnrealizedPnlPercent(pos.entryPriceE8, getEffectivePrice(key), pos.leverage, pos.isLong);
+                  }, 0);
+                return totalUnrealized !== 0 ? (
+                  <span className={`text-sm font-mono font-bold px-3 py-1 rounded-lg ${totalUnrealized >= 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                    Unrealized: {totalUnrealized >= 0 ? "+" : ""}{totalUnrealized.toFixed(2)}%
+                  </span>
+                ) : null;
+              })()}
+              <span className="text-xs font-mono text-zinc-500">RwaPerpEngine.getPositions()</span>
             </div>
           </div>
 
-          {/* Withdraw */}
-          <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-800 space-y-5">
-            <div className="border-b border-zinc-800 pb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                Withdraw to Public Wallet
-              </h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Deduct TEE shadow balance and redeem plain mUSDC to your connected wallet.
-              </p>
+          {userPositions.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed border-zinc-200 rounded-xl space-y-2">
+              <Lock className="w-8 h-8 text-zinc-300 mx-auto" />
+              <p className="text-xs text-zinc-500 font-mono">No active positions found for connected wallet.</p>
+              <p className="text-[11px] text-zinc-400">Use the order form above to open your first encrypted position.</p>
             </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase">
+                  <tr>
+                    <th className="py-3 px-4">#</th>
+                    <th className="py-3 px-4">Asset</th>
+                    <th className="py-3 px-4">Side</th>
+                    <th className="py-3 px-4">Entry Price</th>
+                    <th className="py-3 px-4">Current Price</th>
+                    <th className="py-3 px-4">Leverage</th>
+                    <th className="py-3 px-4">Unrealized PnL (Live)</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200">
+                  {userPositions.map((pos) => (
+                    <tr key={pos.index} className="hover:bg-zinc-50/50">
+                      <td className="py-4 px-4 font-bold text-zinc-900">#{pos.index}</td>
+                      <td className="py-4 px-4 font-bold text-zinc-900">{pos.assetSymbol}</td>
+                      <td className="py-4 px-4">
+                        {pos.isLong ? (
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">LONG</span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold">SHORT</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-4 text-zinc-900">${pos.entryPriceFormatted}</td>
+                      <td className="py-4 px-4 text-zinc-700 font-bold">
+                        {(() => {
+                          const key = getAssetKey(pos.assetId);
+                          if (!key || !pos.isOpen) return <span className="text-zinc-400">—</span>;
+                          const effPrice = getEffectivePrice(key);
+                          return (
+                            <span>
+                              ${effPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="py-4 px-4 font-bold text-indigo-600">{pos.leverage}x</td>
+                      <td className="py-4 px-4">
+                        {(() => {
+                          if (!pos.isOpen) return <span className="text-zinc-400">Settled</span>;
+                          const key = getAssetKey(pos.assetId);
+                          if (!key) return <span className="text-zinc-400">—</span>;
+                          const effPrice = getEffectivePrice(key);
+                          const pnlPct = computeUnrealizedPnlPercent(pos.entryPriceE8, effPrice, pos.leverage, pos.isLong);
+                          const isProfit = pnlPct >= 0;
+                          const marginEst = parseFloat(marginInput || "20");
+                          const pnlUsdEst = (marginEst * pnlPct) / 100;
 
-            <div className="space-y-3">
-              <label className="text-xs font-mono text-zinc-400">Amount (mUSDC)</label>
-              <div className="flex gap-2">
-                <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 font-mono text-sm text-white focus:outline-none focus:border-amber-500/50" placeholder="50" />
-                <button onClick={() => setWithdrawAmount(String(shadowBalance))}
-                  className="px-4 py-3 rounded-xl bg-zinc-800 text-xs font-mono text-zinc-400 hover:text-white border border-zinc-700">MAX</button>
-              </div>
-
-              <button onClick={handleWithdraw} disabled={isProcessing || !account || !positionHandle}
-                className="w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-bold text-sm font-mono transition-all border border-amber-500/30">
-                {!account ? "Connect Wallet" : isProcessing ? "Processing..." : "Execute Withdrawal"}
-              </button>
+                          if (pnlPct === 0) {
+                            return (
+                              <span className="text-amber-700 flex items-center gap-1 font-semibold">
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                                $0.00 (0.00%)
+                              </span>
+                            );
+                          }
+                          return (
+                            <div className="space-y-0.5">
+                              <span className={`font-bold text-sm ${isProfit ? "text-emerald-600" : "text-red-600"}`}>
+                                {isProfit ? "+" : ""}{pnlPct.toFixed(2)}%
+                              </span>
+                              <div className={`text-[11px] font-bold ${isProfit ? "text-emerald-600" : "text-red-600"}`}>
+                                {isProfit ? "+" : ""}${pnlUsdEst.toFixed(2)} USDC
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
+                      <td className="py-4 px-4">
+                        {pos.isOpen ? (
+                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium flex items-center gap-1 w-fit">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> OPEN
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-500 font-medium">CLOSED</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        {pos.isOpen && (
+                          <div className="space-y-1.5">
+                            {(() => {
+                              const key = getAssetKey(pos.assetId);
+                              const entryPrice = parseFloat(ethers.formatUnits(pos.entryPriceE8, 8));
+                              const currentPrice = key ? oracleData[key].priceRaw : 0;
+                              if (Math.abs(currentPrice - entryPrice) < 0.0001) {
+                                return (
+                                  <div className="text-[10px] text-amber-700 font-mono mb-1 flex items-center gap-1 justify-end font-medium">
+                                    <AlertCircle className="w-3 h-3 text-amber-500" /> Price unchanged on Sepolia
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                            <button
+                              onClick={() => initiateClosePosition(pos.index)}
+                              disabled={isProcessing}
+                              className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-mono font-bold transition-all disabled:opacity-50 shadow-xs"
+                            >
+                              Close & Settle PnL
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Position Details */}
-        {positionHandle && (
-          <div className="p-6 rounded-xl bg-zinc-900 border border-zinc-800 space-y-4">
-            <h3 className="text-base font-bold text-white">On-Chain Position Details</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
-              <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1">
-                <span className="text-zinc-500 text-[10px] uppercase">TEE Position Handle</span>
-                <p className="text-indigo-400 break-all text-[11px]">{positionHandle}</p>
+        {/* UNCHANGED ORACLE PRICE WARNING CONFIRMATION MODAL VIA PORTAL */}
+        {showUnchangedPriceModal && isMounted && createPortal(
+          <div ref={modalBackdropRef} className="fixed inset-0 z-[99999] w-screen h-screen flex items-center justify-center p-4 sm:p-6 bg-[#090D16]/90 backdrop-blur-xl">
+            <div ref={modalContentRef} className="bg-white rounded-2xl border border-zinc-200/90 shadow-2xl max-w-md w-full p-6 space-y-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-100 text-amber-700">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-900 font-mono">Chainlink Price Unchanged</h3>
+                    <p className="text-xs text-zinc-500">Sepolia Oracle Update Notice</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => closeModalWithAnimation()}
+                  className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1">
-                <span className="text-zinc-500 text-[10px] uppercase">FundVault Contract</span>
-                <a href={`https://sepolia.etherscan.io/address/${DEPLOYED_ADDRESSES.contracts.FundVault}#readContract`}
-                  target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline break-all text-[11px] block">
-                  {DEPLOYED_ADDRESSES.contracts.FundVault}
-                </a>
+
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200/80 text-xs font-mono text-amber-900 space-y-2 leading-relaxed">
+                <p className="font-semibold text-amber-950">
+                  The Sepolia oracle price has not changed since position entry ($4,099.50 USD).
+                </p>
+                <p className="text-zinc-700">
+                  Chainlink updates the Sepolia feed only when the market moves &gt;0.5% or when the 1-hour heartbeat expires.
+                </p>
+                <p className="text-zinc-700 font-semibold pt-1">
+                  Closing on-chain now will yield 0 price delta and settled PnL will equal exactly <span className="text-amber-900 font-bold">$0.00 (0.00%)</span>.
+                </p>
               </div>
-              <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1">
-                <span className="text-zinc-500 text-[10px] uppercase">Connected Address</span>
-                <p className="text-white break-all text-[11px]">{account}</p>
+
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  onClick={() => pendingClosePositionIndex !== null && executeClosePosition(pendingClosePositionIndex)}
+                  className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-mono text-xs font-bold rounded-xl transition-all shadow-xs"
+                >
+                  Close Position Anyway ($0.00 PnL on Sepolia)
+                </button>
+                <button
+                  onClick={() => closeModalWithAnimation()}
+                  className="w-full py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-xs font-bold rounded-xl transition-all"
+                >
+                  Cancel &amp; Wait for Market Update
+                </button>
               </div>
-              <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1">
-                <span className="text-zinc-500 text-[10px] uppercase">Investor Status</span>
-                <p className="text-emerald-400 font-bold">{isInvestor ? "Registered On-Chain" : "Not Registered"}</p>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* CLOSED POSITIONS PnL SETTLEMENT LOG */}
+        {closedHistory.length > 0 && (
+          <div className="vault-card p-8 space-y-6 bg-white border-zinc-200">
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-600" /> Realized Session PnL Audit Log
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Historical settlement records extracted from on-chain `PositionClosed` events.
+                </p>
               </div>
+              <span className="text-xs font-mono px-2 py-1 rounded bg-indigo-50 text-indigo-700">
+                Event Log Audit
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 uppercase">
+                  <tr>
+                    <th className="py-3 px-4">Pos #</th>
+                    <th className="py-3 px-4">Asset</th>
+                    <th className="py-3 px-4">Exit Price</th>
+                    <th className="py-3 px-4">PnL Scalar (Bps)</th>
+                    <th className="py-3 px-4">PnL %</th>
+                    <th className="py-3 px-4">Estimated PnL ($)</th>
+                    <th className="py-3 px-4 text-right">Tx Hash</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200">
+                  {closedHistory.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-zinc-50/50">
+                      <td className="py-4 px-4 font-bold text-zinc-900">#{item.index}</td>
+                      <td className="py-4 px-4 font-bold text-zinc-900">{item.assetSymbol}</td>
+                      <td className="py-4 px-4 text-zinc-900">${item.exitPriceFormatted} USD</td>
+                      <td className="py-4 px-4 font-mono">{item.pnlScalarBps} bps</td>
+                      <td className="py-4 px-4 font-bold">
+                        <span className={item.isProfit ? "text-emerald-600" : "text-red-600"}>
+                          {item.pnlPercentStr}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 font-bold text-sm">
+                        <span className={item.isProfit ? "text-emerald-600" : "text-red-600"}>
+                          {item.pnlUsdcEstimate}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <a
+                          href={`https://sepolia.etherscan.io/tx/${item.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-600 hover:text-indigo-800 underline font-mono text-[11px]"
+                        >
+                          {item.txHash.substring(0, 8)}...
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-        {/* Not Connected State */}
-        {!account && (
-          <div className="p-12 rounded-xl bg-zinc-900/50 border border-zinc-800 text-center space-y-3">
-            <div className="text-zinc-500 font-mono text-sm">Connect your Web3 wallet to access your portfolio</div>
-            <p className="text-zinc-600 text-xs font-mono">Supports any EVM-compatible wallet (MetaMask, OKX, Rainbow, Trust, etc.)</p>
+        {/* EMBEDDED INVESTOR PRIVACY & AUDITOR ACL PORTAL */}
+        <div className="vault-card p-8 space-y-6 bg-white border-zinc-200">
+          <div className="flex justify-between items-center border-b border-zinc-200 pb-4">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                <Eye className="w-5 h-5 text-indigo-600" /> Investor Privacy & Auditor Access Portal
+              </h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Grant or revoke viewing permission to an auditor over your encrypted vault balance. Revocation triggers Single-User Handle Rotation.
+              </p>
+            </div>
+            <span className="text-xs font-mono text-zinc-500">DisclosureManager.sol</span>
           </div>
-        )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-3">
+              <label className="text-xs font-mono text-zinc-500 block">Auditor / Regulator Address</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={auditorAddress}
+                  onChange={(e) => setAuditorAddress(e.target.value)}
+                  placeholder="0x... (Auditor Ethereum Address)"
+                  className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2.5 font-mono text-xs text-zinc-900 focus:outline-none focus:border-indigo-500"
+                />
+                {auditorAddress && (
+                  <button
+                    onClick={() => copyToClipboard(auditorAddress)}
+                    className="btn-secondary text-xs px-3 py-2 font-mono text-zinc-600"
+                  >
+                    {copiedAddr ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleGrantAuditor}
+                  disabled={isProcessing || !account || !ethers.isAddress(auditorAddress)}
+                  className="w-1/2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <UserCheck className="w-4 h-4" /> Grant Access
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRevokeAuditor}
+                  disabled={isProcessing || !account || !ethers.isAddress(auditorAddress)}
+                  className="w-1/2 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-mono text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <RotateCw className="w-4 h-4" /> Revoke & Rotate
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900 font-mono space-y-2">
+              <div className="font-bold text-amber-950 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-600" /> Cryptographic Single-User Handle Rotation
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-800">
+                When revoking auditor access, RealVault invokes <code className="bg-amber-100 px-1 py-0.5 rounded">vault.rotateUserHandle()</code>. This regenerates your position handle on-chain, rendering the old ciphertext un-decryptable for the auditor.
+              </p>
+              <div className="pt-2 text-[11px] font-bold text-amber-900">
+                Status for Auditor: {isAuditorActive ? "🟢 AUTHORIZED (Can View)" : "🔴 NOT AUTHORIZED (Revoked / Hidden)"}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -67,18 +67,25 @@ Captured live on ETH Sepolia across active LP cohorts ($N = 2, 3, 4$ LPs):
 
 ---
 
-## 📄 Official Deployment Manifest (Ethereum Sepolia - `11155111`)
+## 📦 Contratos Desplegados / Official Deployment Manifest (Ethereum Sepolia - `11155111`)
 
-All 6 smart contracts are deployed, active, and verified on Sepolia Testnet:
+### ⚡ RwaPerpEngine System (NUEVO)
 
 | Contract | Sepolia Contract Address | Explorer Verification |
 |---|---|---|
-| `MockUSDC` | `0xD1f773cB1e56623c6D538002e400c65f46d332F4` | [Etherscan](https://sepolia.etherscan.io/address/0xD1f773cB1e56623c6D538002e400c65f46d332F4#code) |
-| `WrappedUSDC` | `0x26251371d262c785ba53553Bd7CF092b42a19d70` | [Etherscan](https://sepolia.etherscan.io/address/0x26251371d262c785ba53553Bd7CF092b42a19d70#code) |
-| `FundVault` | `0xE97e5d50634A3CAb3361fD91858E89B0b716Afd0` | [Etherscan](https://sepolia.etherscan.io/address/0xE97e5d50634A3CAb3361fD91858E89B0b716Afd0#code) |
-| `NAVAggregator` | `0x04F2Ae698A5971E6bF653121097b2F2Ab732B370` | [Etherscan](https://sepolia.etherscan.io/address/0x04F2Ae698A5971E6bF653121097b2F2Ab732B370#code) |
-| `DisclosureManager` | `0x518E274002E4a6654C18CD6a59A40107b78e4122` | [Etherscan](https://sepolia.etherscan.io/address/0x518E274002E4a6654C18CD6a59A40107b78e4122#code) |
-| `RebalancerAgent` | `0x279A6dc11abBF4eCBAD89D1f2F60927b692d2482` | [Etherscan](https://sepolia.etherscan.io/address/0x279A6dc11abBF4eCBAD89D1f2F60927b692d2482#code) |
+| `RwaPerpEngine` ✨ | `0xf2257eFD95bFf279282F7655A609e7F090a067B9` | [Etherscan](https://sepolia.etherscan.io/address/0xf2257eFD95bFf279282F7655A609e7F090a067B9#code) |
+| `ChainlinkRwaOracleAdapter` | `0xAdeC65047Ac793357815854FB5ce0439556a8EbA` | [Etherscan](https://sepolia.etherscan.io/address/0xAdeC65047Ac793357815854FB5ce0439556a8EbA#code) |
+| `SignedNavOracleAdapter` | `0xca2665F6c54607B8Bc9Ba037203701f9D94B13f5` | [Etherscan](https://sepolia.etherscan.io/address/0xca2665F6c54607B8Bc9Ba037203701f9D94B13f5#code) |
+
+### 🏛️ Infraestructura Core (Re-deployada con soporte de autorización)
+
+| Contract | Sepolia Contract Address | Explorer Verification |
+|---|---|---|
+| `FundVault` | `0xAA768DACFd3a649d5776e1E4a1C54a35F970F573` | [Etherscan](https://sepolia.etherscan.io/address/0xAA768DACFd3a649d5776e1E4a1C54a35F970F573#code) |
+| `MockUSDC` | `0x57A97B71aF262d60AA0B1408264f69698f287D70` | [Etherscan](https://sepolia.etherscan.io/address/0x57A97B71aF262d60AA0B1408264f69698f287D70#code) |
+| `WrappedUSDC` | `0xd0F2E33A7f66852FacDD4400D28D1D14Ec38729e` | [Etherscan](https://sepolia.etherscan.io/address/0xd0F2E33A7f66852FacDD4400D28D1D14Ec38729e#code) |
+| `NAVAggregator` | `0x931a690B7e0BFD0f2D2c2173291987fCB819d20a` | [Etherscan](https://sepolia.etherscan.io/address/0x931a690B7e0BFD0f2D2c2173291987fCB819d20a#code) |
+| `DisclosureManager` | `0x1Eb49C188bCF3b8cDc060D0036f31D2233F19a64` | [Etherscan](https://sepolia.etherscan.io/address/0x1Eb49C188bCF3b8cDc060D0036f31D2233F19a64#code) |
 
 ---
 

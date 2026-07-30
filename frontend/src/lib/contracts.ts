@@ -14,14 +14,17 @@ export const DEPLOYED_ADDRESSES = {
   network: "sepolia",
   chainId: 11155111,
   contracts: {
-    MockUSDC: safeAddress("0xD1f773cB1e56623c6D538002e400c65f46d332F4"),
-    WrappedUSDC: safeAddress("0x26251371d262c785ba53553Bd7CF092b42a19d70"),
-    FundVault: safeAddress("0xE97e5d50634A3CAb3361fD91858E89B0b716Afd0"),
-    NAVAggregator: safeAddress("0x04F2Ae698A5971E6bF653121097b2F2Ab732B370"),
-    DisclosureManager: safeAddress("0x518E274002E4a6654C18CD6a59A40107b78e4122"),
-    RebalancerAgent: safeAddress("0x279A6dc11abBF4eCBAD89D1f2F60927b692d2482"),
+    MockUSDC: safeAddress("0x57A97B71aF262d60AA0B1408264f69698f287D70"),
+    WrappedUSDC: safeAddress("0xd0F2E33A7f66852FacDD4400D28D1D14Ec38729e"),
+    FundVault: safeAddress("0xC37da66F128feFE3c91744E8b4aD9208c2083784"),
+    NAVAggregator: safeAddress("0x931a690B7e0BFD0f2D2c2173291987fCB819d20a"),
+    DisclosureManager: safeAddress("0x4F7eAafEF7680Ef59B120f62c27882dbB068fd6d"),
+    RebalancerAgent: safeAddress("0x9f5975d9461Ce41f2c21DDfAB8426DBE00903285"),
+    RwaPerpEngine: safeAddress("0x9a42F328EbE36e11Abb92444e9EF4e257Ad33902"),
+    ChainlinkOracle: safeAddress("0x5e515fF92C77B9A06DfE09818930e8aFDaFa432E"),
+    SignedNavOracle: safeAddress("0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26"),
+    SafeMultisig: safeAddress("0xEB964eD961f6d901ffC36Bf3244430efa4418f9D"),
   },
-  deployer: safeAddress("0x1420cF8Bb9D92C3fDb674ECc5A57295c59078fDA"),
   noxCompute: safeAddress("0x24Ef36Ec5b626D7DCD09a98F3083c2758F0F77bF"),
   deploymentBlock: 11328000,
 };
@@ -85,16 +88,12 @@ export function createJsonRpcProvider(url = RPC_URL) {
 }
 
 // ─── Real World Asset Portfolio Allocation Definitions (On-Chain Policy) ──────
-// NOTE: Target percentages come from RebalancerAgent.sol (targetAllocationA/B).
-// No USD values are hardcoded — they must be derived from on-chain NAV data.
 export const RWA_PORTFOLIO_ASSETS = [
   {
     id: "ust-bill",
     name: "Short-Duration U.S. Treasury Bills",
     ticker: "UST-BILL",
     category: "Sovereign Debt Allocation",
-    targetAllocationPct: 60,
-    allocationBps: 6000,
     contract: "WrappedUSDC (ERC-7984)",
     description: "Short-duration sovereign debt sleeve used as the fund's defensive allocation model.",
   },
@@ -103,8 +102,6 @@ export const RWA_PORTFOLIO_ASSETS = [
     name: "Prime Commercial Real Estate Debt",
     ticker: "CRE-DEBT",
     category: "Commercial Real Estate Allocation",
-    targetAllocationPct: 40,
-    allocationBps: 4000,
     contract: "WrappedUSDC (ERC-7984)",
     description: "Senior secured first-lien commercial real estate debt backed by prime urban institutional properties.",
   },
@@ -121,12 +118,12 @@ export const FUND_VAULT_ABI = [
   "function getPosition(address user) external view returns (uint256)",
   "function getInvestors() external view returns (address[])",
   "function investorCount() external view returns (uint256)",
-  "function admin() external view returns (address)",
+  "function rotateUserHandle(address investor) external",
   "function disclosureManager() external view returns (address)",
   "function navAggregator() external view returns (address)",
   "event Deposited(address indexed investor)",
   "event Withdrawn(address indexed investor)",
-  "event HandlesRotated(uint256 count)",
+  "event UserHandleRotated(address indexed investor)",
 ];
 
 export const NAV_AGGREGATOR_ABI = [
@@ -138,7 +135,6 @@ export const NAV_AGGREGATOR_ABI = [
   "function lastInvestorCount() external view returns (uint256)",
   "function batchInProgress() external view returns (bool)",
   "function batchCursor() external view returns (uint256)",
-  "function admin() external view returns (address)",
   "function vault() external view returns (address)",
   "event NavAggregated(uint256 totalInvestors, uint256 blockNumber)",
 ];
@@ -146,26 +142,25 @@ export const NAV_AGGREGATOR_ABI = [
 export const DISCLOSURE_MANAGER_ABI = [
   "function grantAuditorAccess(address auditor) external",
   "function revokeAuditorAccess(address auditor) external",
-  "function isActiveAuditor(address auditor) external view returns (bool)",
-  "function auditorGrantedAt(address auditor) external view returns (uint256)",
-  "function getAuditorHistory() external view returns (address[])",
-  "function admin() external view returns (address)",
+  "function isActiveAuditorFor(address investor, address auditor) external view returns (bool)",
+  "function auditorGrantedAtForInvestor(address investor, address auditor) external view returns (uint256)",
+  "function getInvestorAuditorHistory(address investor) external view returns (address[])",
   "function vault() external view returns (address)",
-  "event AuditorAccessGranted(address indexed auditor, uint256 timestamp)",
-  "event AuditorAccessRevoked(address indexed auditor, uint256 timestamp)",
+  "event AuditorAccessGranted(address indexed investor, address indexed auditor, uint256 timestamp)",
+  "event AuditorAccessRevoked(address indexed investor, address indexed auditor, uint256 timestamp)",
 ];
 
 export const REBALANCER_ABI = [
   "function setTargetAllocation(uint256 allocA, uint256 allocB) external",
   "function rebalance(bytes32 amountHandle, bytes calldata amountProof, bool fromAtoB) external",
   "function batchRebalance(bytes32[] calldata amounts, bytes[] calldata proofs, bool[] calldata directions) external",
-  "function targetAllocationA() external view returns (uint256)",
-  "function targetAllocationB() external view returns (uint256)",
-  "function rebalanceCount() external view returns (uint256)",
-  "function lastRebalanceBlock() external view returns (uint256)",
-  "function admin() external view returns (address)",
-  "event TargetAllocationUpdated(uint256 targetA, uint256 targetB)",
-  "event RebalanceExecuted(uint256 indexed rebalanceId, uint256 blockNumber)",
+  "function userTargetAllocA(address user) external view returns (uint256)",
+  "function userTargetAllocB(address user) external view returns (uint256)",
+  "function userRebalanceCount(address user) external view returns (uint256)",
+  "function userLastRebalanceBlock(address user) external view returns (uint256)",
+  "function isInitialized(address user) external view returns (bool)",
+  "event TargetAllocationUpdated(address indexed user, uint256 targetA, uint256 targetB)",
+  "event RebalanceExecuted(address indexed user, uint256 indexed rebalanceId, uint256 blockNumber)",
 ];
 
 export const MOCK_USDC_ABI = [
@@ -174,6 +169,29 @@ export const MOCK_USDC_ABI = [
   "function balanceOf(address account) external view returns (uint256)",
   "function allowance(address owner, address spender) external view returns (uint256)",
 ];
+
+export const RWA_PERP_ENGINE_ABI = [
+  "function openPosition(bytes32 assetId, bytes32 marginHandle, bytes calldata marginProof, uint8 leverage, bool isLong) external",
+  "function closePosition(uint256 positionIndex) external",
+  "function getPositions(address user) external view returns (tuple(bytes32 assetId, bytes32 marginHandle, uint128 entryPriceE8, uint80 entryRoundOrNonce, bytes32 entrySourceId, uint8 leverage, uint64 openedAt, bool isLong, bool isOpen)[])",
+  "function maxPositionsPerWallet() external view returns (uint256)",
+  "function maxMarginPerPositionE6() external view returns (uint256)",
+  "function tradingPaused() external view returns (bool)",
+  "function assetConfigs(bytes32) external view returns (tuple(bytes32 assetId, string symbol, address oracleAdapter, uint256 maxStaleness, string valuationMethod, string description))",
+  "event PositionOpened(address indexed user, uint256 indexed positionIndex, bytes32 assetId, bool isLong, uint8 leverage, uint128 entryPriceE8, uint80 entryRound, bytes32 sourceId, uint64 openedAt)",
+  "event PositionClosed(address indexed user, uint256 indexed positionIndex, bytes32 assetId, uint128 exitPriceE8, bytes32 exitSourceId, int256 pnlScalar, uint64 closedAt)",
+];
+
+export const ORACLE_ADAPTER_ABI = [
+  "function latestPrice(bytes32 assetId) external view returns (uint256 priceE8, uint256 updatedAt, bytes32 sourceId, uint256 confidence, bool settlementEnabled)",
+];
+
+// Helper to compute ethers.keccak256(toUtf8Bytes(str))
+export const ASSET_IDS = {
+  rGOLD: ethers.id("rGOLD"),
+  rUSTB: ethers.id("rUSTB"),
+  rCRE: ethers.id("rCRE"),
+};
 
 // ─── Gas Benchmark Data — Loaded dynamically from benchmark results ──────────
 export interface GasBenchmarkEntry {

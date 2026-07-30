@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 import { useAccount } from "wagmi";
 import Navbar from "@/components/Navbar";
-import { DEPLOYED_ADDRESSES, RPC_URL, createFallbackProvider, DISCLOSURE_MANAGER_ABI } from "@/lib/contracts";
+import { DEPLOYED_ADDRESSES, createFallbackProvider, DISCLOSURE_MANAGER_ABI } from "@/lib/contracts";
 import { ensureSepoliaNetwork, getBrowserSignerProvider } from "@/lib/web3";
 import {
   Eye,
@@ -16,12 +16,11 @@ import {
   Copy,
   Check,
   Wallet,
-  Building2,
 } from "lucide-react";
 
 export default function AuditorPage() {
   const { address: connectedAccount } = useAccount();
-  const [auditorAddress, setAuditorAddress] = useState<string>("0x9530CDDECAB21750ce904E14DE25bDFdaE77f3D0");
+  const [auditorAddress, setAuditorAddress] = useState<string>("");
   const [isActive, setIsActive] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [lastGasUsed, setLastGasUsed] = useState<number | null>(null);
@@ -29,22 +28,22 @@ export default function AuditorPage() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [copiedAddr, setCopiedAddr] = useState<boolean>(false);
 
-  // Check active auditor status from Sepolia RPC
+  // Check active auditor status from Sepolia RPC for connected investor
   const checkAuditorStatus = useCallback(async (addr: string) => {
     try {
-      if (!ethers.isAddress(addr)) return;
+      if (!connectedAccount || !ethers.isAddress(addr)) return;
       const provider = await createFallbackProvider();
       const manager = new ethers.Contract(
         DEPLOYED_ADDRESSES.contracts.DisclosureManager,
         DISCLOSURE_MANAGER_ABI,
         provider
       );
-      const active = await manager.isActiveAuditor(addr);
+      const active = await manager.isActiveAuditorFor(connectedAccount, addr);
       setIsActive(active as boolean);
     } catch {
       // RPC check failed
     }
-  }, []);
+  }, [connectedAccount]);
 
   useEffect(() => {
     if (ethers.isAddress(auditorAddress)) {
@@ -60,8 +59,12 @@ export default function AuditorPage() {
   };
 
   const handleGrant = async () => {
-    if (typeof window === "undefined" || !(window as any).ethereum) {
-      setStatusMsg("No Web3 provider found. Please connect MetaMask to Sepolia.");
+    if (!connectedAccount) {
+      setStatusMsg("Please connect your Web3 wallet first.");
+      return;
+    }
+    if (!ethers.isAddress(auditorAddress)) {
+      setStatusMsg("Please enter a valid auditor Ethereum address.");
       return;
     }
 
@@ -83,73 +86,76 @@ export default function AuditorPage() {
       setLastAction("Granted Auditor Access");
       setStatusMsg(`✅ Auditor access granted on Sepolia! Gas used: ${receipt.gasUsed.toString()}`);
     } catch (err: any) {
-      console.warn("Grant requires contract admin, switching to Public Demo Mode:", err);
-      setIsActive(true);
-      setLastAction("Granted Auditor Access (Public Demo)");
-      setStatusMsg(`✅ Auditor access granted (Public Demo Mode)! Permissions updated for ${auditorAddress.slice(0, 10)}...`);
+      setStatusMsg(`Grant failed: ${err?.reason || err?.message || "Transaction rejected"}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleRevoke = async () => {
-    if (typeof window === "undefined" || !(window as any).ethereum) {
-      setStatusMsg("No Web3 provider found. Please connect MetaMask to Sepolia.");
+    if (!connectedAccount) {
+      setStatusMsg("Please connect your Web3 wallet first.");
+      return;
+    }
+    if (!ethers.isAddress(auditorAddress)) {
+      setStatusMsg("Please enter a valid auditor Ethereum address.");
       return;
     }
 
     setIsProcessing(true);
-    setStatusMsg("Submitting revokeAuditorAccess transaction (Handle Rotation) to ETH Sepolia...");
+    setStatusMsg("Submitting revokeAuditorAccess transaction (Single-User Handle Rotation) to ETH Sepolia...");
     try {
       await ensureSepoliaNetwork();
+      const validAddr = ethers.getAddress(auditorAddress.trim());
       const { provider, signer } = await getBrowserSignerProvider();
       const manager = new ethers.Contract(
         DEPLOYED_ADDRESSES.contracts.DisclosureManager,
         DISCLOSURE_MANAGER_ABI,
         signer
       );
-      const tx = await manager.revokeAuditorAccess(auditorAddress);
+      const tx = await manager.revokeAuditorAccess(validAddr);
       const receipt = await tx.wait();
       setLastGasUsed(Number(receipt.gasUsed));
       setIsActive(false);
-      setLastAction("Revoked via Handle Rotation");
-      setStatusMsg(`✅ Auditor revoked & handles rotated on Sepolia! Gas used: ${receipt.gasUsed.toString()}`);
+      setLastAction("Revoked via Single-User Handle Rotation");
+      setStatusMsg(`✅ Auditor revoked & position handle rotated on Sepolia! Gas used: ${receipt.gasUsed.toString()}`);
     } catch (err: any) {
-      console.warn("Revoke requires contract admin, switching to Public Demo Mode:", err);
-      setIsActive(false);
-      setLastAction("Revoked via Handle Rotation (Public Demo)");
-      setStatusMsg(`✅ Auditor revoked & handles rotated (Public Demo Mode)! Handles regenerated for ${auditorAddress.slice(0, 10)}...`);
+      setStatusMsg(`Revocation failed: ${err?.reason || err?.message || "Transaction rejected"}`);
     } finally {
       setIsProcessing(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 pb-16">
+    <main className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans selection:bg-indigo-100 selection:text-indigo-900 pb-16">
       <Navbar />
 
-      <main className="max-w-4xl mx-auto px-6 space-y-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
         {/* HEADER */}
-        <section className="glass-card p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Eye className="w-6 h-6 text-cyan-400" />
-              Compliance &amp; Disclosure Portal
+        <section className="bg-white border border-zinc-200 rounded-xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-mono mb-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+              Auditor Access Control · iExec Nox Protocol
+            </div>
+            <h1 className="text-2xl font-extrabold text-zinc-900 tracking-tight flex items-center gap-2">
+              <Eye className="w-6 h-6 text-indigo-600" />
+              Sovereign Auditor ACL Portal
             </h1>
-            <p className="text-xs text-slate-400">
-              Manage temporary auditor viewing rights on <code>DisclosureManager</code>. Revocation is executed on-chain via Handle Rotation $O(n)$.
+            <p className="text-xs text-zinc-500">
+              Grant or revoke temporary viewing permissions for an auditor over YOUR encrypted position. Revocation executes on-chain Single-User Handle Rotation.
             </p>
           </div>
 
-          <div className="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
-            <span className="text-slate-400">Auditor State:</span>
+          <div className="flex items-center space-x-2 bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-200 text-xs shrink-0">
+            <span className="text-zinc-500 font-medium">Auditor Status:</span>
             {isActive ? (
-              <span className="text-emerald-400 font-bold flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5" /> ACTIVE AUDITOR
+              <span className="text-emerald-700 font-bold font-mono flex items-center gap-1.5 bg-emerald-100/80 px-2.5 py-0.5 rounded-full">
+                <UserCheck className="w-3.5 h-3.5" /> AUTHORIZED
               </span>
             ) : (
-              <span className="text-slate-400 font-bold flex items-center gap-1">
-                <UserX className="w-3.5 h-3.5 text-slate-500" /> NO ACCESS
+              <span className="text-zinc-500 font-bold font-mono flex items-center gap-1.5 bg-zinc-200/60 px-2.5 py-0.5 rounded-full">
+                <UserX className="w-3.5 h-3.5 text-zinc-400" /> NOT AUTHORIZED
               </span>
             )}
           </div>
@@ -158,66 +164,49 @@ export default function AuditorPage() {
         {/* AUDITOR ACTIONS */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Grant Card */}
-          <div className="glass-card p-6 space-y-4">
-            <div className="flex justify-between items-center text-xs text-slate-400">
+          <div className="bg-white border border-zinc-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div className="flex justify-between items-center text-xs font-mono text-zinc-500 uppercase tracking-wide">
               <span>Grant Viewing Rights</span>
-              <UserCheck className="w-4 h-4 text-emerald-400" />
+              <UserCheck className="w-4 h-4 text-emerald-600" />
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center text-xs">
-                  <label className="text-slate-400">Auditor Address</label>
-                  <button
-                    onClick={() => copyToClipboard(auditorAddress)}
-                    className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-[11px] transition-colors"
-                  >
-                    {copiedAddr ? (
-                      <>
-                        <Check className="w-3 h-3 text-emerald-400" />
-                        <span className="text-emerald-400">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copy Address</span>
-                      </>
-                    )}
-                  </button>
+                  <label className="text-zinc-600 font-medium">Auditor / Regulator Address</label>
+                  {auditorAddress && (
+                    <button
+                      onClick={() => copyToClipboard(auditorAddress)}
+                      className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 text-[11px] font-medium transition-colors cursor-pointer"
+                    >
+                      {copiedAddr ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-600">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 <input
                   type="text"
                   value={auditorAddress}
                   onChange={(e) => setAuditorAddress(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white mono-code focus:outline-none focus:border-cyan-500"
+                  placeholder="0x... (Auditor Ethereum Address)"
+                  className="w-full bg-white border border-zinc-200 rounded-lg px-3.5 py-2.5 text-xs text-zinc-900 font-mono focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                 />
-
-                {/* Quick-Fill Buttons for Judges */}
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  {connectedAccount && (
-                    <button
-                      onClick={() => setAuditorAddress(connectedAccount)}
-                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-semibold text-purple-300 rounded flex items-center gap-1 transition-all"
-                    >
-                      <Wallet className="w-3 h-3 text-purple-400" />
-                      <span>Use Connected Wallet</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setAuditorAddress("0x9530CDDECAB21750ce904E14DE25bDFdaE77f3D0")}
-                    className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-semibold text-cyan-300 rounded flex items-center gap-1 transition-all"
-                  >
-                    <Building2 className="w-3 h-3 text-cyan-400" />
-                    <span>Use Sample Regulator</span>
-                  </button>
-                </div>
               </div>
 
               <button
                 onClick={handleGrant}
-                disabled={isProcessing}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-950 text-white font-semibold rounded-lg text-xs flex items-center justify-center space-x-2 transition-all shadow-md"
+                disabled={isProcessing || !connectedAccount}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-lg text-xs flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:cursor-not-allowed"
               >
                 <UserCheck className="w-4 h-4" />
                 <span>Grant Auditor Access</span>
@@ -226,22 +215,22 @@ export default function AuditorPage() {
           </div>
 
           {/* Revoke Card (Handle Rotation) */}
-          <div className="glass-card p-6 space-y-4 border-amber-500/30">
-            <div className="flex justify-between items-center text-xs text-slate-400">
+          <div className="bg-white border border-amber-200 rounded-xl p-6 shadow-sm space-y-4">
+            <div className="flex justify-between items-center text-xs font-mono text-amber-700 uppercase tracking-wide">
               <span>Revoke Rights (Handle Rotation)</span>
-              <RotateCw className="w-4 h-4 text-amber-400" />
+              <RotateCw className="w-4 h-4 text-amber-600" />
             </div>
 
-            <div className="space-y-3">
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Invokes <code className="text-amber-300">FundVault.rotateHandles()</code> via DisclosureManager.
-                Generates clean handles with updated ACLs, revoking previous viewing rights.
+            <div className="space-y-3.5">
+              <p className="text-xs text-zinc-600 leading-relaxed">
+                Invokes <code className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-mono text-[11px]">DisclosureManager.revokeAuditorAccess()</code>.
+                Regenerates a clean handle for your position, cryptographically excluding the auditor.
               </p>
 
               <button
                 onClick={handleRevoke}
-                disabled={isProcessing}
-                className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 disabled:bg-amber-950 text-white font-semibold rounded-lg text-xs flex items-center justify-center space-x-2 transition-all shadow-md"
+                disabled={isProcessing || !connectedAccount}
+                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-semibold rounded-lg text-xs flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:cursor-not-allowed"
               >
                 <RotateCw className="w-4 h-4" />
                 <span>Revoke via Handle Rotation</span>
@@ -252,13 +241,13 @@ export default function AuditorPage() {
 
         {/* GAS MEASUREMENT RESULTS */}
         {lastGasUsed && (
-          <div className="glass-card p-5 space-y-3 bg-slate-950/90 border-slate-800">
+          <div className="p-5 rounded-xl bg-white border border-zinc-200 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-bold text-zinc-900 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-500" />
                 Last Transaction Gas ({lastAction})
               </span>
-              <span className="mono-code text-sm font-bold text-amber-300">
+              <span className="font-mono text-sm font-bold text-indigo-600">
                 {lastGasUsed.toLocaleString("en-US")} gas
               </span>
             </div>
@@ -267,27 +256,27 @@ export default function AuditorPage() {
 
         {/* STATUS MSG */}
         {statusMsg && (
-          <div className="glass-card p-4 text-xs text-slate-300 border-slate-700">
+          <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-xs font-mono text-indigo-900">
             {statusMsg}
           </div>
         )}
 
         {/* HANDLE ROTATION ARCHITECTURE INSIGHT */}
-        <section className="glass-card p-6 space-y-4 bg-amber-950/10 border-amber-800/30">
+        <section className="p-6 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-4">
           <div className="flex items-start space-x-3">
-            <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <h3 className="text-sm font-bold text-amber-200">
-                Handle Rotation Mechanism
+              <h3 className="text-sm font-bold text-amber-900">
+                Sovereign Single-User Handle Rotation
               </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Traditional ACLs allow permission revocation by mutating state, but off-chain ciphertexts already viewed by auditors could be retained.
-                By generating a brand new handle (<code className="text-amber-300">Nox.add(oldHandle, 0)</code>), RealVault invalidates the old ciphertext pointer entirely, ensuring previous viewers cannot decrypt future fund state.
+              <p className="text-xs text-amber-800/90 leading-relaxed">
+                By creating a new handle (<code className="px-1.5 py-0.5 rounded bg-amber-100/80 text-amber-900 font-mono text-[11px]">Nox.add(oldHandle, 0)</code>) specifically for your position, RealVault invalidates the ciphertext pointer previously accessible to the auditor without affecting any other investor on-chain.
               </p>
             </div>
           </div>
         </section>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
+

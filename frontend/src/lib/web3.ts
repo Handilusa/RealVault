@@ -117,3 +117,24 @@ export async function ensureSepoliaNetwork(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Decodes Web3 transaction error codes and hex custom errors (e.g. 0xe450d38c for ERC20InsufficientBalance)
+ * into clean, user-friendly error messages.
+ */
+export function parseWeb3Error(err: any): string {
+  if (!err) return "Transaction failed";
+  if (err.code === "ACTION_REJECTED" || err.code === 4001 || err?.message?.includes("rejected") || err?.message?.includes("denied")) {
+    return "Transaction request cancelled in Web3 wallet.";
+  }
+
+  const errStr = (typeof err === "object" ? JSON.stringify(err) : "") + (err.message || "") + (err.data || "") + (err.reason || "");
+  if (errStr.includes("e450d38c") || errStr.includes("ERC20InsufficientBalance") || errStr.includes("insufficient balance")) {
+    return "Insufficient mUSDC balance in your wallet. Click '+ Mint mUSDC' to claim test tokens.";
+  }
+  if (errStr.includes("ERC20InsufficientAllowance") || errStr.includes("allowance")) {
+    return "Insufficient mUSDC allowance approved for FundVault contract.";
+  }
+
+  return err.reason || err.shortMessage || err.message || "Transaction reverted";
+}

@@ -70,9 +70,9 @@ async function main() {
   console.log("   ✅ FundVault.setNavAggregator completed!");
 
   // 6. Deploy RebalancerAgent
-  console.log("\n[Bonus] Deploying RebalancerAgent (60/40 target)...");
+  console.log("\n[6/6] Deploying RebalancerAgent (Sovereign Per-User)...");
   const RebalancerAgent = await hre.ethers.getContractFactory("RebalancerAgent");
-  const rebalancerAgent = await RebalancerAgent.deploy(6000, 4000);
+  const rebalancerAgent = await RebalancerAgent.deploy();
   await rebalancerAgent.waitForDeployment();
   const rebalancerAgentAddress = await rebalancerAgent.getAddress();
   console.log("   ✅ RebalancerAgent deployed at:", rebalancerAgentAddress);

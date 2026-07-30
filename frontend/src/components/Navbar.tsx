@@ -10,7 +10,7 @@ export default function Navbar() {
   const navItems = [
     { label: "Home", href: "/" },
     { label: "Shadow Wallet", href: "/portfolio" },
-    { label: "Investor Portal", href: "/investor" },
+    { label: "Confidential Trading", href: "/investor" },
     { label: "Auditor Registry", href: "/auditor" },
   ];
 

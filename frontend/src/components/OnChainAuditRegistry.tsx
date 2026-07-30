@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
+import { useAccount } from "wagmi";
 import {
   DEPLOYED_ADDRESSES,
-  RPC_URL,
   createFallbackProvider,
   DISCLOSURE_MANAGER_ABI,
 } from "@/lib/contracts";
@@ -20,13 +20,18 @@ interface OnChainAuditRegistryProps {
 }
 
 export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAuditRegistryProps) {
+  const { address: connectedAccount } = useAccount();
   const [auditorList, setAuditorList] = useState<OnChainAuditorEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [adminAddress, setAdminAddress] = useState<string | null>(null);
 
   const fetchAuditorRegistry = useCallback(async () => {
     setLoading(true);
     try {
+      if (!connectedAccount) {
+        setAuditorList([]);
+        return;
+      }
+
       const provider = await createFallbackProvider();
       const manager = new ethers.Contract(
         DEPLOYED_ADDRESSES.contracts.DisclosureManager,
@@ -34,55 +39,42 @@ export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAu
         provider
       );
 
-      const historyPromise = manager.getAuditorHistory ? manager.getAuditorHistory().catch(() => []) : Promise.resolve([]);
-      const adminPromise = manager.admin ? manager.admin().catch(() => null) : Promise.resolve(null);
-      const eventsPromise = manager.queryFilter(manager.filters.AuditorAccessGranted(), -200000).catch(() => []);
-
-      const [history, admin, events] = await Promise.all([historyPromise, adminPromise, eventsPromise]);
-
-      setAdminAddress(admin as string | null);
+      const history = await manager.getInvestorAuditorHistory(connectedAccount).catch(() => []);
+      const events = await manager.queryFilter(manager.filters.AuditorAccessGranted(connectedAccount), -200000).catch(() => []);
 
       const candidateAddresses = new Set<string>();
 
-      // 1. Add addresses from getAuditorHistory if supported
       if (Array.isArray(history)) {
         for (const a of history) {
           if (typeof a === "string" && ethers.isAddress(a)) candidateAddresses.add(ethers.getAddress(a));
         }
       }
 
-      // 2. Add addresses from AuditorAccessGranted on-chain events
       if (Array.isArray(events)) {
         for (const ev of events) {
-          const addr = (ev as any)?.args?.auditor || (ev as any)?.args?.[0];
+          const addr = (ev as any)?.args?.auditor || (ev as any)?.args?.[1];
           if (addr && typeof addr === "string" && ethers.isAddress(addr)) {
             candidateAddresses.add(ethers.getAddress(addr));
           }
         }
       }
 
-      // 3. Add activeAuditorAddress prop if provided
       if (activeAuditorAddress && ethers.isAddress(activeAuditorAddress)) {
         candidateAddresses.add(ethers.getAddress(activeAuditorAddress));
       }
-
-      // 4. Default sample regulator address
-      candidateAddresses.add(ethers.getAddress("0x9530CDDECAB21750ce904E14DE25bDFdaE77f3D0"));
 
       const entries: OnChainAuditorEntry[] = [];
       for (const addr of Array.from(candidateAddresses)) {
         try {
           const [active, timestamp] = await Promise.all([
-            manager.isActiveAuditor(addr).catch(() => false),
-            manager.auditorGrantedAt(addr).catch(() => 0n),
+            manager.isActiveAuditorFor(connectedAccount, addr).catch(() => false),
+            manager.auditorGrantedAtForInvestor(connectedAccount, addr).catch(() => 0n),
           ]);
-
-          const isGranted: boolean = Boolean(active) || Boolean(activeAuditorAddress && ethers.isAddress(activeAuditorAddress) && ethers.getAddress(activeAuditorAddress) === addr);
 
           entries.push({
             address: addr,
-            isActive: isGranted,
-            grantedAt: Number(timestamp) || Math.floor(Date.now() / 1000),
+            isActive: Boolean(active),
+            grantedAt: Number(timestamp),
           });
         } catch {
           entries.push({
@@ -99,7 +91,7 @@ export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAu
     } finally {
       setLoading(false);
     }
-  }, [activeAuditorAddress]);
+  }, [connectedAccount, activeAuditorAddress]);
 
   useEffect(() => {
     fetchAuditorRegistry();
@@ -111,18 +103,18 @@ export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAu
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base font-bold text-zinc-900">
-              Verified On-Chain Auditor ACL Registry
+              Sovereign Auditor ACL Registry
             </h3>
             <span className="badge-fhe text-[10px]">DisclosureManager.sol</span>
           </div>
           <p className="text-sm text-zinc-500 mt-1">
-            Historical audit access record and live ACL status queried directly from smart contract state
+            Historical audit access record and live ACL status for your connected wallet
           </p>
         </div>
 
         <button
           onClick={fetchAuditorRegistry}
-          disabled={loading}
+          disabled={loading || !connectedAccount}
           className="btn-secondary text-xs py-2 px-3.5 font-mono shrink-0"
         >
           {loading ? "Querying Contract..." : "Refresh ACL State"}
@@ -131,30 +123,32 @@ export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAu
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-mono text-xs">
         <div className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 space-y-1">
-          <span className="text-zinc-400 uppercase text-[10px] block">ACL Contract Admin</span>
+          <span className="text-zinc-400 uppercase text-[10px] block">Target Vault Contract</span>
           <span className="font-bold text-indigo-600 break-all">
-            {adminAddress ? (
-              <a
-                href={`https://sepolia.etherscan.io/address/${adminAddress}`}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:underline"
-              >
-                {adminAddress}
-              </a>
-            ) : "Loading..."}
+            <a
+              href={`https://sepolia.etherscan.io/address/${DEPLOYED_ADDRESSES.contracts.FundVault}`}
+              target="_blank"
+              rel="noreferrer"
+              className="hover:underline"
+            >
+              {DEPLOYED_ADDRESSES.contracts.FundVault}
+            </a>
           </span>
         </div>
 
         <div className="p-4 rounded-lg bg-zinc-50 border border-zinc-200 space-y-1">
-          <span className="text-zinc-400 uppercase text-[10px] block">Audit Grant Count</span>
+          <span className="text-zinc-400 uppercase text-[10px] block">Sovereign Audit Grants</span>
           <span className="font-bold text-zinc-900 text-sm">
             {auditorList.length} Auditors Evaluated On-Chain
           </span>
         </div>
       </div>
 
-      {loading && auditorList.length === 0 ? (
+      {!connectedAccount ? (
+        <div className="p-8 text-center font-mono text-xs text-zinc-500 bg-zinc-50 rounded-lg border border-zinc-200">
+          Connect your Web3 wallet to inspect your active auditor viewing permissions.
+        </div>
+      ) : loading && auditorList.length === 0 ? (
         <div className="p-8 text-center font-mono text-xs text-zinc-400 bg-zinc-50 rounded-lg border border-zinc-200">
           Reading auditor access list from DisclosureManager.sol...
         </div>
@@ -162,7 +156,7 @@ export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAu
         <div className="p-8 text-center font-mono text-xs text-zinc-500 bg-zinc-50 rounded-lg border border-zinc-200 space-y-1">
           <div className="font-bold text-zinc-700">No Auditor Access Grants Recorded</div>
           <p className="text-zinc-400">
-            Use the Compliance Controls section to grant auditor viewing permissions on-chain.
+            Grant auditor viewing permissions above to generate on-chain ACL records.
           </p>
         </div>
       ) : (
@@ -194,7 +188,7 @@ export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAu
                     <td className="px-4 py-3 text-center text-zinc-600">
                       {entry.grantedAt > 0
                         ? new Date(entry.grantedAt * 1000).toISOString().replace("T", " ").substring(0, 19) + " UTC"
-                        : "Genesis / Direct Grant"
+                        : "Direct Grant"
                       }
                     </td>
 
@@ -231,3 +225,4 @@ export default function OnChainAuditRegistry({ activeAuditorAddress }: OnChainAu
     </div>
   );
 }
+

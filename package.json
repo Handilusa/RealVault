@@ -10,11 +10,19 @@
     "test": "hardhat test",
     "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
     "deploy:arbitrum": "hardhat run scripts/deploy.js --network arbitrumSepolia",
+    "deploy:rwa-perp": "hardhat run scripts/deploy-rwa-perp-engine.js --network sepolia",
+    "check:deployment": "hardhat run scripts/check-deployment.js --network sepolia",
+    "fund:treasury": "hardhat run scripts/fund-treasury.js --network sepolia",
+    "test:oracles": "hardhat run scripts/test-oracle-queries.js --network sepolia",
     "check:nav": "hardhat run scripts/nav-integrity-check.js --network sepolia",
+    "configure:nav-publishers": "hardhat run scripts/configure-signed-nav-publishers.js --network sepolia",
     "simulate:sepolia": "hardhat run scripts/simulate-sepolia-flow.js --network sepolia",
     "deposit:sepolia": "hardhat run scripts/deposit-sepolia.js --network sepolia",
     "simulate:arbitrum": "hardhat run scripts/simulate-sepolia-flow.js --network arbitrumSepolia",
-    "benchmark:gas": "hardhat run scripts/gas-scaling-benchmark.js --network sepolia"
+    "benchmark:gas": "hardhat run scripts/gas-scaling-benchmark.js --network sepolia",
+    "nox:fund-treasury": "hardhat run scripts/nox-fund-treasury.js --network sepolia",
+    "nox:test-flow": "hardhat run scripts/nox-test-flow.js --network sepolia",
+    "setup:multisig": "hardhat run scripts/setup-multisig.js --network sepolia"
   },
   "keywords": [
     "hardhat",
@@ -44,6 +52,7 @@
     "chai": "^4.5.0",
     "dotenv": "^16.4.5",
     "ethers": "^6.17.0",
+    "fast-check": "^4.9.0",
     "hardhat": "^2.22.0",
     "hardhat-gas-reporter": "^1.0.10",
     "solidity-coverage": "^0.8.17",
@@ -56,6 +65,7 @@
     "@iexec-nox/nox-confidential-contracts": "^0.2.2",
     "@iexec-nox/nox-protocol-contracts": "^0.2.4",
     "@openzeppelin/contracts": "^5.0.2",
+    "@safe-global/protocol-kit": "^4.1.7",
     "graphql": "^17.0.2",
     "viem": "^2.55.5"
   }

@@ -27,8 +27,8 @@ import {
   MOCK_USDC_ABI,
   RWA_PORTFOLIO_ASSETS,
 } from "@/lib/contracts";
-import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider } from "@/lib/web3";
-import { fetchMarketData, calculateBlendedAPY, MarketDataPoint } from "@/lib/marketData";
+import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider, parseWeb3Error } from "@/lib/web3";
+import { fetchMarketData, MarketDataPoint } from "@/lib/marketData";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -52,6 +52,12 @@ interface OnChainInvestor {
 
 export default function RealVaultApp() {
   const { address: account } = useAccount();
+  const [isHydrated, setIsHydrated] = useState(false);
+  const displayAccount = isHydrated ? account : undefined;
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Active section for Stepper tracking
   const [activeSection, setActiveSection] = useState<string>("hero");
@@ -106,8 +112,7 @@ export default function RealVaultApp() {
     loaded: false,
   });
 
-  // Personal LP portfolio allocation preference (per-user)
-  const [personalAllocRatio, setPersonalAllocRatio] = useState<number>(50);
+
 
   // Reset sandbox state and decryption immediately whenever connected wallet (account) changes
   useEffect(() => {
@@ -126,32 +131,19 @@ export default function RealVaultApp() {
         txHash: null,
         loaded: true,
       });
-      setPersonalAllocRatio(50);
+
       return;
     }
 
-    // Lock decryption for new wallet and load wallet-specific shadow balance & allocation
-    const shadowKey = `rv_shadow_${account.toLowerCase()}`;
-    const storedShadow = localStorage.getItem(shadowKey);
-    const shadowVal = storedShadow ? parseFloat(storedShadow) : 0;
-
+    // Lock decryption for new wallet
     setSandboxState((prev) => ({
       ...prev,
       isDecrypted: false,
       decryptedBalance: null,
-      shadowBalance: shadowVal,
       positionHandle: null,
       statusMsg: null,
       txHash: null,
     }));
-
-    const allocKey = `rv_personal_alloc_${account.toLowerCase()}`;
-    const storedAlloc = localStorage.getItem(allocKey);
-    if (storedAlloc) {
-      setPersonalAllocRatio(parseInt(storedAlloc, 10));
-    } else {
-      setPersonalAllocRatio(50);
-    }
   }, [account]);
 
   // Section 6: Compliance & Rebalancing state
@@ -201,12 +193,7 @@ export default function RealVaultApp() {
     onConfirm: () => {},
   });
 
-  const handlePersonalAllocChange = (val: number) => {
-    setPersonalAllocRatio(val);
-    if (account) {
-      localStorage.setItem(`rv_personal_alloc_${account.toLowerCase()}`, val.toString());
-    }
-  };
+
 
   // Copy helper
   const copyToClipboard = (text: string, label: string) => {
@@ -217,7 +204,7 @@ export default function RealVaultApp() {
 
   // ─── LAZY LOADERS FOR SECTIONS ─────────────────────────────────
 
-  const fetchDashboardState = useCallback(async () => {
+  const fetchDashboardState = useCallback(async (overrideUserAddr?: string) => {
     setDashboardState((prev) => ({ ...prev, loading: true }));
     try {
       const provider = await getReadOnlyProvider();
@@ -225,20 +212,39 @@ export default function RealVaultApp() {
       const nav = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.NAVAggregator, NAV_AGGREGATOR_ABI, provider);
       const rebalancer = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RebalancerAgent, REBALANCER_ABI, provider);
 
-      const [count, rawNavHandle, lastBlock, lastInvCount, targetA, targetB, latestBlock, investorList] = await Promise.all([
+      const userAddr = overrideUserAddr || accountRef.current;
+      const initPromise = userAddr ? rebalancer.isInitialized(userAddr).catch(() => false) : Promise.resolve(false);
+      const targetAPromise = userAddr ? rebalancer.userTargetAllocA(userAddr).catch(() => null) : Promise.resolve(null);
+      const targetBPromise = userAddr ? rebalancer.userTargetAllocB(userAddr).catch(() => null) : Promise.resolve(null);
+
+      const [count, rawNavHandle, lastBlock, lastInvCount, isInit, targetA, targetB, latestBlock, investorList] = await Promise.all([
         vault.investorCount(),
         nav.aggregatedNav(),
         nav.lastUpdateBlock(),
         nav.lastInvestorCount(),
-        rebalancer.targetAllocationA(),
-        rebalancer.targetAllocationB(),
+        initPromise,
+        targetAPromise,
+        targetBPromise,
         provider.getBlockNumber(),
-        vault.getInvestors(),
+        vault.getInvestors().catch(() => []),
       ]);
 
-      // Read position handles for each investor (convert BigInt handles to 32-byte hex)
+      const isHiddenTestAddress = (addr: string): boolean => {
+        const clean = addr.toLowerCase();
+        return (
+          clean.startsWith("0x302ef0") ||
+          clean.startsWith("0x424d39") ||
+          clean.startsWith("0xc9118e")
+        );
+      };
+
+      const filteredList = (investorList as string[]).filter(
+        (addr) => !isHiddenTestAddress(addr)
+      );
+
+      // Read position handles for each real investor (convert BigInt handles to 32-byte hex)
       const investors: OnChainInvestor[] = [];
-      for (const addr of investorList as string[]) {
+      for (const addr of filteredList) {
         try {
           const rawHandle = await vault.getPosition(addr);
           const hexHandle = toHexHandle(rawHandle) || "0x0";
@@ -251,17 +257,45 @@ export default function RealVaultApp() {
         }
       }
 
-      setDashboardState({
-        investorCount: Number(count),
-        investors,
-        navHandle: toHexHandle(rawNavHandle),
-        lastUpdateBlock: Number(lastBlock),
-        lastInvestorCount: Number(lastInvCount),
-        targetAllocA: Number(targetA),
-        targetAllocB: Number(targetB),
-        currentBlock: Number(latestBlock),
-        loading: false,
-        loaded: true,
+      setDashboardState((prev) => {
+        let finalTargetA = prev.targetAllocA;
+        let finalTargetB = prev.targetAllocB;
+
+        if (isInit && targetA !== null && targetB !== null) {
+          finalTargetA = Number(targetA);
+          finalTargetB = Number(targetB);
+        } else if (userAddr && typeof window !== "undefined") {
+          try {
+            const saved = localStorage.getItem(`realvault_target_alloc_${userAddr.toLowerCase()}`);
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (typeof parsed.a === "number" && typeof parsed.b === "number") {
+                finalTargetA = parsed.a;
+                finalTargetB = parsed.b;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (finalTargetA === 0 && finalTargetB === 0) {
+          finalTargetA = 5000;
+          finalTargetB = 5000;
+        }
+
+        return {
+          investorCount: investors.length,
+          investors,
+          navHandle: toHexHandle(rawNavHandle),
+          lastUpdateBlock: Number(lastBlock),
+          lastInvestorCount: Number(lastInvCount),
+          targetAllocA: finalTargetA,
+          targetAllocB: finalTargetB,
+          currentBlock: Number(latestBlock),
+          loading: false,
+          loaded: true,
+        };
       });
     } catch (err) {
       console.error("Dashboard fetch failed:", err);
@@ -281,15 +315,10 @@ export default function RealVaultApp() {
         usdc.balanceOf(userAddr),
       ]);
 
-      const shadowKey = `rv_shadow_${userAddr.toLowerCase()}`;
-      const storedShadow = localStorage.getItem(shadowKey);
-      const shadowVal = storedShadow ? parseFloat(storedShadow) : 0;
-
       setSandboxState((prev) => ({
         ...prev,
         isInvestorOnChain: isInv as boolean,
         positionHandle: toHexHandle(rawHandle),
-        shadowBalance: shadowVal,
         mUsdcBalance: ethers.formatUnits(bal as bigint, 18),
         loaded: true,
       }));
@@ -298,12 +327,14 @@ export default function RealVaultApp() {
     }
   }, []);
 
-  const fetchComplianceState = useCallback(async (addr: string) => {
+  const fetchComplianceState = useCallback(async (auditorAddr: string) => {
     try {
-      if (!ethers.isAddress(addr)) return;
+      if (!ethers.isAddress(auditorAddr)) return;
+      const userAddr = accountRef.current;
+      if (!userAddr) return;
       const provider = await getReadOnlyProvider();
       const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, provider);
-      const active = await manager.isActiveAuditor(addr);
+      const active = await manager.isActiveAuditorFor(userAddr, auditorAddr);
 
       setComplianceState((prev) => ({
         ...prev,
@@ -315,30 +346,61 @@ export default function RealVaultApp() {
     }
   }, []);
 
-  const fetchRebalanceState = useCallback(async () => {
+  const fetchRebalanceState = useCallback(async (overrideUserAddr?: string) => {
     try {
+      const userAddr = overrideUserAddr || accountRef.current;
+      if (!userAddr) return;
+
       const provider = await getReadOnlyProvider();
       const agent = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RebalancerAgent, REBALANCER_ABI, provider);
 
-      const [targetA, targetB, count, block] = await Promise.all([
-        agent.targetAllocationA(),
-        agent.targetAllocationB(),
-        agent.rebalanceCount(),
-        agent.lastRebalanceBlock(),
+      const [isInit, targetA, targetB, count, block] = await Promise.all([
+        agent.isInitialized(userAddr).catch(() => false),
+        agent.userTargetAllocA(userAddr).catch(() => null),
+        agent.userTargetAllocB(userAddr).catch(() => null),
+        agent.userRebalanceCount(userAddr).catch(() => 0n),
+        agent.userLastRebalanceBlock(userAddr).catch(() => 0n),
       ]);
 
-      const aBps = Number(targetA);
-      const bBps = Number(targetB);
+      setRebalanceState((prev) => {
+        let aBps = prev.currentAllocationA;
+        let bBps = prev.currentAllocationB;
 
-      setRebalanceState((prev) => ({
-        ...prev,
-        currentAllocationA: aBps,
-        currentAllocationB: bBps,
-        targetRatioA: aBps / 100,
-        rebalanceCount: Number(count),
-        lastBlock: Number(block),
-        loaded: true,
-      }));
+        if (isInit && targetA !== null && targetB !== null) {
+          aBps = Number(targetA);
+          bBps = Number(targetB);
+        } else if (userAddr && typeof window !== "undefined") {
+          try {
+            const saved = localStorage.getItem(`realvault_target_alloc_${userAddr.toLowerCase()}`);
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (typeof parsed.a === "number" && typeof parsed.b === "number") {
+                aBps = parsed.a;
+                bBps = parsed.b;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        if (aBps === 0 && bBps === 0) {
+          aBps = 5000;
+          bBps = 5000;
+        }
+
+        const ratioA = aBps / 100;
+
+        return {
+          ...prev,
+          currentAllocationA: aBps,
+          currentAllocationB: bBps,
+          targetRatioA: prev.isProcessingRule ? prev.targetRatioA : ratioA,
+          rebalanceCount: Number(count),
+          lastBlock: Number(block),
+          loaded: true,
+        };
+      });
     } catch {
       setRebalanceState((prev) => ({ ...prev, loaded: true }));
     }
@@ -353,8 +415,10 @@ export default function RealVaultApp() {
   useEffect(() => {
     if (account) {
       fetchSandboxState(account);
+      fetchRebalanceState(account);
+      fetchDashboardState(account);
     }
-  }, [account, fetchSandboxState]);
+  }, [account, fetchSandboxState, fetchRebalanceState, fetchDashboardState]);
 
   useEffect(() => {
     const sections = [
@@ -476,24 +540,20 @@ export default function RealVaultApp() {
         DEPLOYED_ADDRESSES.contracts.FundVault as `0x${string}`
       );
 
-      // Step 3: Execute Confidential Deposit on-chain via Web3 wallet (transfers mUSDC + credits TEE shadow balance)
+      // Step 3: Execute Confidential Deposit on-chain via Web3 wallet (transfers mUSDC + credits TEE position)
       setSandboxState((prev) => ({ ...prev, statusMsg: "Requesting Confidential Deposit transaction in your wallet..." }));
       const depositTx = await vault["deposit(bytes32,bytes,uint256)"](handle, handleProof, amountParsed);
 
       setSandboxState((prev) => ({ ...prev, statusMsg: "Waiting for block confirmation on Sepolia..." }));
       const receipt = await depositTx.wait();
 
-      // Track shadow balance locally
       const depositedNum = parseFloat(sandboxState.depositAmount) || 0;
-      const newShadow = sandboxState.shadowBalance + depositedNum;
-      if (account) {
-        localStorage.setItem(`rv_shadow_${account.toLowerCase()}`, String(newShadow));
-      }
+      const formattedAmt = `${depositedNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mUSDC`;
 
       setSandboxState((prev) => ({
         ...prev,
         isProcessing: false,
-        shadowBalance: newShadow,
+        decryptedBalance: formattedAmt,
         statusMsg: `Confidential deposit executed on-chain! Block: #${receipt.blockNumber} · Gas: ${receipt.gasUsed.toString()}`,
         txHash: depositTx.hash,
       }));
@@ -502,7 +562,7 @@ export default function RealVaultApp() {
       fetchDashboardState();
     } catch (err: any) {
       console.error("Deposit error:", err);
-      setSandboxState((prev) => ({ ...prev, statusMsg: `Deposit failed: ${err.reason || err.message || "User rejected"}` }));
+      setSandboxState((prev) => ({ ...prev, statusMsg: `Deposit failed: ${parseWeb3Error(err)}` }));
     } finally {
       setSandboxState((prev) => ({ ...prev, isProcessing: false }));
     }
@@ -514,6 +574,30 @@ export default function RealVaultApp() {
       await ensureSepoliaNetwork();
       const { provider, signer } = await getBrowserSignerProvider();
 
+      setSandboxState((prev) => ({ ...prev, statusMsg: "Connecting to Nox TEE Handle Client..." }));
+      const { createEthersHandleClient } = await import("@iexec-nox/handle");
+      const handleClient = await createEthersHandleClient(provider as any);
+
+      if (sandboxState.positionHandle) {
+        try {
+          const res = await handleClient.decrypt(sandboxState.positionHandle as `0x${string}`).catch(() => null);
+          if (res && res.value !== undefined) {
+            const valNum = parseFloat(res.value.toString());
+            const formatted = `${valNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mUSDC`;
+            setSandboxState((prev) => ({
+              ...prev,
+              isDecrypted: true,
+              decryptedBalance: formatted,
+              statusMsg: `Nox TEE Handle Decrypted: ${formatted}`,
+            }));
+            return;
+          }
+        } catch {
+          // Ignore gateway errors
+        }
+      }
+
+      // EIP-712 Signature Verification
       const domain = {
         name: "RealVault Confidentiality Protocol",
         version: "1",
@@ -538,9 +622,12 @@ export default function RealVaultApp() {
       setSandboxState((prev) => ({ ...prev, statusMsg: "Requesting EIP-712 signature from wallet..." }));
       const signature = await signer.signTypedData(domain, types, value);
 
+      const activeBal = sandboxState.decryptedBalance || (sandboxState.positionHandle || sandboxState.isInvestorOnChain ? "Position Handle Confirmed (Nox euint256)" : "No active position");
+
       setSandboxState((prev) => ({
         ...prev,
         isDecrypted: true,
+        decryptedBalance: activeBal,
         statusMsg: `EIP-712 wallet authorization verified (${signature.slice(0, 14)}...). Position handle confirmed on-chain.`,
       }));
     } catch (err: any) {
@@ -574,12 +661,9 @@ export default function RealVaultApp() {
 
       fetchComplianceState(complianceState.auditorAddress);
     } catch (err: any) {
-      console.warn("On-chain grant requires contract admin, switching to Public Sandbox mode:", err);
-      // Fallback for public hackathon judges/users who are not the contract deployer
       setComplianceState((prev) => ({
         ...prev,
-        isActiveAuditor: true,
-        statusMsg: `Auditor viewing access granted (Public Demo Mode)! Permission simulated for address ${complianceState.auditorAddress.slice(0, 10)}...`,
+        statusMsg: `Auditor grant failed: ${err.reason || err.message || "Transaction rejected"}`,
       }));
     } finally {
       setComplianceState((prev) => ({ ...prev, isProcessing: false }));
@@ -608,11 +692,9 @@ export default function RealVaultApp() {
       fetchComplianceState(complianceState.auditorAddress);
       fetchDashboardState();
     } catch (err: any) {
-      console.warn("On-chain revoke requires contract admin, switching to Public Sandbox mode:", err);
       setComplianceState((prev) => ({
         ...prev,
-        isActiveAuditor: false,
-        statusMsg: `Auditor revoked via Handle Rotation (Public Demo Mode)! Position handles rotated for ${complianceState.auditorAddress.slice(0, 10)}...`,
+        statusMsg: `Auditor revocation failed: ${err.reason || err.message || "Transaction rejected"}`,
       }));
     } finally {
       setComplianceState((prev) => ({ ...prev, isProcessing: false }));
@@ -623,7 +705,7 @@ export default function RealVaultApp() {
     setConfirmModal({
       isOpen: true,
       title: "Confirm Handle Rotation Revocation",
-      description: `Revoking auditor ${complianceState.auditorAddress.slice(0, 10)}... will trigger DisclosureManager.revokeAuditorAccess() which internally calls FundVault.rotateHandles(). This re-encrypts all LP position handles and permanently invalidates past auditor viewing keys.`,
+      description: `Revoking auditor ${complianceState.auditorAddress.slice(0, 10)}... will trigger DisclosureManager.revokeAuditorAccess() which internally calls FundVault.rotateUserHandle(). This re-encrypts your position handle and permanently invalidates past auditor viewing keys.`,
       estimateGas: async () => {
         try {
           const { signer } = await getBrowserSignerProvider();
@@ -631,7 +713,7 @@ export default function RealVaultApp() {
           const estimate = await manager.revokeAuditorAccess.estimateGas(complianceState.auditorAddress);
           return estimate;
         } catch {
-          throw new Error("Cannot estimate — may require admin signer");
+          throw new Error("Cannot estimate gas for revocation");
         }
       },
       onConfirm: () => {
@@ -674,19 +756,47 @@ export default function RealVaultApp() {
 
       const receipt = await tx.wait();
 
+      const newRatioA = rebalanceState.targetRatioA;
+
+      // Save allocation policy in localStorage for connected wallet
+      if (typeof window !== "undefined" && account) {
+        try {
+          localStorage.setItem(
+            `realvault_target_alloc_${account.toLowerCase()}`,
+            JSON.stringify({ a: bpsA, b: bpsB, ratioA: newRatioA })
+          );
+        } catch {
+          // ignore storage error
+        }
+      }
+
       setRebalanceState((prev) => ({
         ...prev,
-        statusMsg: `Allocation policy updated on-chain! ${rebalanceState.targetRatioA}% / ${100 - rebalanceState.targetRatioA}% · Gas: ${receipt.gasUsed.toString()}`,
+        currentAllocationA: bpsA,
+        currentAllocationB: bpsB,
+        targetRatioA: newRatioA,
+        statusMsg: `Allocation policy updated on-chain! ${newRatioA}% / ${100 - newRatioA}% · Gas: ${receipt.gasUsed.toString()}`,
         txHash: tx.hash,
       }));
 
-      fetchRebalanceState();
-      fetchDashboardState();
+      // Eagerly sync dashboard state so overview card updates immediately
+      setDashboardState((prev) => ({
+        ...prev,
+        targetAllocA: bpsA,
+        targetAllocB: bpsB,
+      }));
+
+      // Delay RPC re-fetch so node state indexer catches up without overwriting fresh local UI
+      setTimeout(() => {
+        if (account) {
+          fetchRebalanceState(account);
+          fetchDashboardState(account);
+        }
+      }, 3500);
     } catch (err: any) {
-      console.warn("Target allocation update requires contract admin, switching to Public Demo mode:", err);
       setRebalanceState((prev) => ({
         ...prev,
-        statusMsg: `Allocation policy updated (Public Demo Mode)! Presets set to ${rebalanceState.targetRatioA}% Sovereign / ${100 - rebalanceState.targetRatioA}% Real Estate.`,
+        statusMsg: `Allocation update failed: ${err.reason || err.message || "Transaction rejected"}`,
       }));
     } finally {
       setRebalanceState((prev) => ({ ...prev, isProcessingRule: false }));
@@ -715,7 +825,7 @@ export default function RealVaultApp() {
         DEPLOYED_ADDRESSES.contracts.RebalancerAgent as `0x${string}`
       );
 
-      setRebalanceExecMsg("Executing agent.rebalance() on Sepolia smart contract...");
+      setRebalanceExecMsg("Executing agent.rebalance() for your sovereign position...");
       const tx = await agent.rebalance(handle, handleProof, true);
       const receipt = await tx.wait();
 
@@ -727,13 +837,7 @@ export default function RealVaultApp() {
         setRebalanceExecMsg("Transaction request cancelled in Web3 wallet.");
         return;
       }
-      console.warn("Rebalance on-chain execution error:", err);
-      const msg = err.reason || err.message || "Execution reverted";
-      if (msg.includes("not admin") || msg.includes("onlyAdmin")) {
-        setRebalanceExecMsg(`On-Chain Policy Restriction: RebalancerAgent.rebalance() requires admin signer (0x1420...8fDA). Public execution restricted by smart contract modifier.`);
-      } else {
-        setRebalanceExecMsg(`Rebalance execution failed: ${msg.slice(0, 100)}`);
-      }
+      setRebalanceExecMsg(`Rebalance execution failed: ${err.reason || err.message || "Execution reverted"}`);
     } finally {
       setIsExecutingRebalance(false);
     }
@@ -1031,13 +1135,11 @@ export default function RealVaultApp() {
               </div>
               <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-900 shrink-0">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-bold text-emerald-700">Blended Fund APY: </span>
+                  <span className="font-bold text-emerald-700">Official Treasury Yield: </span>
                   <span className="font-extrabold text-sm">
-                    {calculateBlendedAPY(
-                      marketData?.treasuryYield || 3.71,
-                      marketData?.creYield || 6.71,
-                      allocAPct || 60
-                    )}% APY
+                    {marketData?.treasuryYield !== null && marketData?.treasuryYield !== undefined
+                      ? `${marketData.treasuryYield.toFixed(2)}% APY`
+                      : "Unavailable"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-1 pt-1 border-t border-emerald-200/60 text-[10px]">
@@ -1058,9 +1160,9 @@ export default function RealVaultApp() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 gsap-slide-up">
             {RWA_PORTFOLIO_ASSETS.map((asset) => {
               const liveYield = asset.id === "ust-bill"
-                ? (marketData ? `${marketData.treasuryYield}% APY` : "3.71% APY")
-                : (marketData ? `${marketData.creYield}% APY` : "6.71% APY");
-              const yieldSource = asset.id === "ust-bill" ? "US Govt FiscalData API" : "Treasury + 300bps Spread";
+                ? (marketData?.treasuryYield !== null && marketData?.treasuryYield !== undefined ? `${marketData.treasuryYield.toFixed(2)}% APY` : "Unavailable")
+                : "Encrypted Position";
+              const yieldSource = asset.id === "ust-bill" ? "US Govt FiscalData API" : "Private On-Chain Collateral";
               const verifyUrl = asset.id === "ust-bill"
                 ? "https://fiscaldata.treasury.gov/datasets/average-interest-rates-treasury-securities/"
                 : "https://fred.stlouisfed.org/series/MORTGAGE30US";
@@ -1078,8 +1180,8 @@ export default function RealVaultApp() {
                     <div className="flex items-center gap-2.5 shrink-0">
                       <span className="badge-fhe text-xs py-1 px-3 font-mono font-bold whitespace-nowrap">
                         {asset.id === "ust-bill"
-                          ? `${allocAPct || asset.targetAllocationPct}% Target`
-                          : `${allocBPct || asset.targetAllocationPct}% Target`
+                          ? `${allocAPct}% Target`
+                          : `${allocBPct}% Target`
                         }
                       </span>
                       <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 whitespace-nowrap shadow-2xs">
@@ -1126,7 +1228,8 @@ export default function RealVaultApp() {
         {/* ═══════════════════════════════════════════════════════════
             SECTION 4: LIVE DASHBOARD
             ═══════════════════════════════════════════════════════════ */}
-        <section id="dashboard" className="space-y-5">
+        <div className="space-y-6">
+          <section id="dashboard" className="space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 gsap-slide-up section-header">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold font-display text-zinc-900">
@@ -1137,7 +1240,7 @@ export default function RealVaultApp() {
               </p>
             </div>
             <button
-              onClick={fetchDashboardState}
+              onClick={() => fetchDashboardState()}
               disabled={dashboardState.loading}
               className="btn-secondary text-sm py-2 px-4 font-mono shrink-0"
             >
@@ -1167,11 +1270,11 @@ export default function RealVaultApp() {
 
             <div className="vault-card p-5 space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-mono uppercase text-zinc-400 tracking-wider">Pooled Asset Strategy</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 font-semibold">Fund Admin</span>
+                <span className="text-xs font-mono uppercase text-zinc-400 tracking-wider">My Allocation Strategy</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">Per-LP Sovereign</span>
               </div>
               <div className="text-2xl font-bold font-data text-zinc-900">
-                {allocAPct > 0 ? `${allocAPct}/${allocBPct}` : "—"}
+                {allocAPct >= 0 ? `${allocAPct}/${allocBPct}` : "50/50"}
               </div>
               <span className="text-xs font-mono text-indigo-600">Sovereign / Real Estate Split</span>
             </div>
@@ -1260,9 +1363,9 @@ export default function RealVaultApp() {
               <table className="w-full font-mono text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-zinc-200 bg-zinc-50">
-                    <th className="w-[35%] text-left px-6 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">LP Address</th>
-                    <th className="w-[35%] text-center px-6 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Position Handle</th>
-                    <th className="w-[30%] text-center px-6 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
+                    <th className="w-[35%] text-left px-6 py-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">LP Address</th>
+                    <th className="w-[35%] text-center px-6 py-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Position Handle</th>
+                    <th className="w-[30%] text-center px-6 py-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1278,7 +1381,7 @@ export default function RealVaultApp() {
 
                     return (
                       <tr key={inv.address} className="border-b border-zinc-100 hover:bg-zinc-50/50 transition-colors">
-                        <td className="px-6 py-4 font-semibold">
+                        <td className="px-6 py-2.5 font-semibold">
                           <div className="flex items-center gap-2">
                             <a
                               href={`https://sepolia.etherscan.io/address/${inv.address}`}
@@ -1296,7 +1399,7 @@ export default function RealVaultApp() {
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-6 py-2.5 text-center">
                           {viewRole === "auditor" ? (
                             <span className="text-indigo-600 text-xs">
                               {inv.positionHandle.slice(0, 10)}...{inv.positionHandle.slice(-6)}
@@ -1311,7 +1414,7 @@ export default function RealVaultApp() {
                           )}
                         </td>
 
-                        <td className="px-6 py-4 text-center font-sans">
+                        <td className="px-6 py-2.5 text-center font-sans">
                           {viewRole === "auditor" ? (
                             <span className="badge-decrypted">Audit Decrypted</span>
                           ) : viewRole === "investor" && isUser ? (
@@ -1332,40 +1435,6 @@ export default function RealVaultApp() {
             </div>
           </div>
         </section>
-
-        {/* Role Separation & Per-LP Privacy Architecture Notice */}
-        <div className="p-5 rounded-xl bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-zinc-50 border border-indigo-100/90 shadow-sm space-y-3 gsap-slide-up">
-          <div className="flex flex-wrap items-center justify-between gap-2 font-bold text-indigo-900 text-sm">
-            <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-              RealVault Protocol Architecture: Roles &amp; Per-LP Confidentiality
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] bg-indigo-100 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded font-bold font-mono">Macro Strategy (Fund Admin)</span>
-              <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-bold font-mono">100% LP Isolation</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 font-sans text-zinc-600 text-xs leading-relaxed">
-            <div className="p-3.5 bg-white/80 rounded-lg border border-indigo-100 space-y-1">
-              <div className="font-bold text-indigo-950 font-mono text-[11px] flex items-center gap-1.5">
-                <span>🏢 FUND MANAGER / ADMIN</span>
-                <span className="text-[10px] text-indigo-600 font-normal">(Pooled Vault Macro Strategy)</span>
-              </div>
-              <p>
-                Sets the <strong>Pooled Asset Policy (75/25 Split)</strong> and executes confidential rebalancing for the aggregate fund pool. Individual LP position sizes remain completely hidden inside iExec Nox TEE enclaves.
-              </p>
-            </div>
-            <div className="p-3.5 bg-white/80 rounded-lg border border-emerald-100 space-y-1">
-              <div className="font-bold text-emerald-950 font-mono text-[11px] flex items-center gap-1.5">
-                <span>🔒 INDIVIDUAL INVESTOR (LP)</span>
-                <span className="text-[10px] text-emerald-600 font-normal">(Isolated Personal Position)</span>
-              </div>
-              <p>
-                Your deposit and encrypted handle (<code>euint256</code>) are <strong>100% private to your wallet address</strong>. No other LP can see your balance. Decryption requires your personal EIP-712 wallet authorization.
-              </p>
-            </div>
-          </div>
-        </div>
 
         {/* ═══════════════════════════════════════════════════════════
             SECTION 5: INTERACTIVE DEMO
@@ -1394,13 +1463,13 @@ export default function RealVaultApp() {
                 <div className="text-right font-mono text-sm">
                   <span className="text-xs text-zinc-400 block">Wallet Balance</span>
                   <span className="font-bold text-emerald-600">
-                    {account ? `${Number(sandboxState.mUsdcBalance).toLocaleString("en-US")} mUSDC` : "Connect Wallet"}
+                    {displayAccount ? `${Number(sandboxState.mUsdcBalance).toLocaleString("en-US")} mUSDC` : "Connect Wallet"}
                   </span>
                 </div>
 
                 <button
                   onClick={handleMintTestTokens}
-                  disabled={sandboxState.isMinting || !account}
+                  disabled={sandboxState.isMinting || !displayAccount}
                   className="btn-primary text-sm py-2.5 px-5 font-mono"
                 >
                   {sandboxState.isMinting ? "Minting..." : "Mint 100 mUSDC"}
@@ -1410,7 +1479,7 @@ export default function RealVaultApp() {
           </div>
 
           {/* Deposit + Position + Personal Strategy Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 gsap-slide-up">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 gsap-slide-up">
             {/* Encrypted Position */}
             <div className="vault-card p-6 space-y-5 flex flex-col justify-between">
               <div className="space-y-4">
@@ -1425,7 +1494,7 @@ export default function RealVaultApp() {
                     <div className="text-xl font-bold font-data text-zinc-900">
                       <RedactionBar
                         isRevealed={sandboxState.isDecrypted}
-                        value={sandboxState.shadowBalance > 0 ? `${sandboxState.shadowBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })} mUSDC` : "No active position"}
+                        value={sandboxState.decryptedBalance || (sandboxState.positionHandle || sandboxState.isInvestorOnChain ? "Position Handle Confirmed (Nox euint256)" : "No active position")}
                       />
                     </div>
                   </div>
@@ -1443,7 +1512,7 @@ export default function RealVaultApp() {
                       )}
                     </div>
                     <div className="inset-panel text-[11px] truncate font-mono">
-                      {account ? (sandboxState.positionHandle || "No position on-chain") : "Connect wallet to read"}
+                      {displayAccount ? (sandboxState.positionHandle || "No position on-chain") : "Connect wallet to read"}
                     </div>
                   </div>
                 </div>
@@ -1457,7 +1526,7 @@ export default function RealVaultApp() {
                     setSandboxState((prev) => ({ ...prev, isDecrypted: false }));
                   }
                 }}
-                disabled={!account}
+                disabled={!displayAccount}
                 className="btn-secondary w-full text-xs py-2.5 font-mono flex items-center justify-center gap-2"
               >
                 <svg className="w-4 h-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1467,52 +1536,7 @@ export default function RealVaultApp() {
               </button>
             </div>
 
-            {/* Personal LP Allocation Strategy */}
-            <div className="vault-card p-6 space-y-4 flex flex-col justify-between">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-zinc-900">My Portfolio Allocation</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
-                    Personal Control
-                  </span>
-                </div>
 
-                <p className="text-xs text-zinc-500 leading-snug">
-                  Select your personal risk weight for your LP funds. Each LP maintains independent asset preference.
-                </p>
-
-                <div className="p-3.5 rounded-lg border border-indigo-100 bg-indigo-50/50 space-y-2">
-                  <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-zinc-500 uppercase text-[10px]">Personal APY:</span>
-                    <span className="font-bold text-indigo-900 text-sm">
-                      {(3.706 * (personalAllocRatio / 100) + 6.71 * ((100 - personalAllocRatio) / 100)).toFixed(2)}% APY
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-[11px] font-mono text-zinc-700 pt-1">
-                    <span>{personalAllocRatio}% Sovereign (T-Bills)</span>
-                    <span>{100 - personalAllocRatio}% Real Estate</span>
-                  </div>
-
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="5"
-                    value={personalAllocRatio}
-                    onChange={(e) => handlePersonalAllocChange(Number(e.target.value))}
-                    className="w-full accent-indigo-600 cursor-pointer h-2 bg-zinc-200 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-[11px] font-mono text-zinc-600 flex items-center justify-between">
-                <span className="text-zinc-400">Target Strategy:</span>
-                <span className="font-bold text-zinc-900">
-                  {personalAllocRatio >= 70 ? "Defensive Sovereign" : personalAllocRatio <= 30 ? "High Yield CRE" : "Balanced Sovereign/CRE"}
-                </span>
-              </div>
-            </div>
 
             {/* Confidential Deposit */}
             <div className="vault-card p-6 space-y-4 flex flex-col justify-between">
@@ -1552,10 +1576,10 @@ export default function RealVaultApp() {
 
                 <button
                   onClick={handleDeposit}
-                  disabled={sandboxState.isProcessing || !account}
+                  disabled={sandboxState.isProcessing || !displayAccount}
                   className="btn-primary w-full text-sm py-3 font-mono"
                 >
-                  {!account
+                  {!displayAccount
                     ? "Connect Wallet First"
                     : sandboxState.isProcessing
                       ? "Executing Deposit..."
@@ -1582,6 +1606,7 @@ export default function RealVaultApp() {
             </div>
           </div>
         </section>
+        </div>
 
         {/* ═══════════════════════════════════════════════════════════
             SECTION 6: COMPLIANCE CONTROLS
@@ -1623,24 +1648,14 @@ export default function RealVaultApp() {
                       Auditor / Regulator Address
                     </label>
                     <div className="flex items-center gap-2 text-[11px] font-mono">
-                      <button
-                        type="button"
-                        onClick={() => setComplianceState((prev) => ({ ...prev, auditorAddress: "0x9530CDDECAB21750ce904E14DE25bDFdaE77f3D0" }))}
-                        className="text-indigo-600 hover:text-indigo-800 underline font-semibold"
-                      >
-                        Reset Demo Regulator
-                      </button>
-                      {account && (
-                        <>
-                          <span className="text-zinc-300">&middot;</span>
-                          <button
-                            type="button"
-                            onClick={() => setComplianceState((prev) => ({ ...prev, auditorAddress: account }))}
-                            className="text-zinc-500 hover:text-zinc-800 underline"
-                          >
-                            Use Connected Wallet
-                          </button>
-                        </>
+                      {displayAccount && (
+                        <button
+                          type="button"
+                          onClick={() => setComplianceState((prev) => ({ ...prev, auditorAddress: displayAccount }))}
+                          className="text-zinc-500 hover:text-zinc-800 underline"
+                        >
+                          Use Connected Wallet
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1650,40 +1665,12 @@ export default function RealVaultApp() {
                     onChange={(e) => setComplianceState((prev) => ({ ...prev, auditorAddress: e.target.value }))}
                     className="w-full font-mono text-sm"
                     placeholder="0x... (Auditor or Regulator Ethereum Address)"
-                  />
-                  {(() => {
-                    const currentAddr = (complianceState.auditorAddress || "").toLowerCase();
-                    const isDeployer = currentAddr === DEPLOYED_ADDRESSES.deployer.toLowerCase();
-                    const isConnectedAccount = account && currentAddr === account.toLowerCase();
-                    const isSelfGrant = isDeployer || isConnectedAccount;
-
-                    if (isSelfGrant) {
-                      return (
-                        <div className="mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-mono text-amber-900 space-y-1">
-                          <div className="font-bold flex items-center gap-1 text-amber-950">
-                            <span>⚠️ Fund Admin Self-Grant Warning</span>
-                          </div>
-                          <p className="leading-snug">
-                            Target address matches Fund Admin ({currentAddr.slice(0, 10)}...). Granting access to yourself does not show external regulatory oversight.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setComplianceState((prev) => ({ ...prev, auditorAddress: "0x9530CDDECAB21750ce904E14DE25bDFdaE77f3D0" }))}
-                            className="text-indigo-700 hover:text-indigo-900 font-bold underline text-[11px] block mt-1"
-                          >
-                            &rarr; Click to switch to Demo External Regulator (0x9530...3D0)
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <p className="text-[11px] font-mono text-emerald-600 mt-1.5 flex items-center gap-1.5 font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                        Role Separation Verified: Target ({currentAddr.slice(0, 10)}...) is distinct from Fund Admin.
-                      </p>
-                    );
-                  })()}
+                  />                  {complianceState.auditorAddress && (
+                    <p className="text-[11px] font-mono text-emerald-600 mt-1.5 flex items-center gap-1.5 font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      Auditor Target Address Set: {complianceState.auditorAddress.slice(0, 10)}...{complianceState.auditorAddress.slice(-6)}
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -1754,24 +1741,24 @@ export default function RealVaultApp() {
 
           {/* Portfolio Policy & Rebalancing */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 gsap-slide-up">
-            {/* Target Allocation Policy */}
+            {/* Sovereign Portfolio Rebalance Policy */}
             <div className="vault-card p-8 space-y-5">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-bold text-zinc-900">Contract Rebalance Policy</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 font-bold">
-                  RebalancerAgent.sol Admin
+                <span className="text-sm font-bold text-zinc-900">Sovereign Portfolio Rebalance Policy</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                  Sovereign Control
                 </span>
               </div>
 
-              <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200 text-xs font-mono text-zinc-600 space-y-1">
+              <div className="p-3 rounded-lg bg-emerald-50/50 border border-emerald-200 text-xs font-mono text-zinc-600 space-y-1">
                 <div className="font-bold text-zinc-800 flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
-                  <span>Pooled Contract Macro Strategy</span>
+                  <span>Per-Wallet Sovereign Strategy</span>
                 </div>
                 <p className="text-[11px] font-sans leading-relaxed text-zinc-500">
-                  Submits target asset weighting to <code>RebalancerAgent.sol</code> for macro rebalancing. Requires Contract Admin signer on Sepolia. LP investors configure their personal risk strategy in Section 5 above.
+                  Sets your personal target allocation (Sovereign Debt vs. Real Estate) on-chain in <code>RebalancerAgent.sol</code> for your connected wallet. Each LP maintains a fully independent allocation policy.
                 </p>
               </div>
 
@@ -1885,7 +1872,7 @@ export default function RealVaultApp() {
                       <span>Processing Transaction...</span>
                     </>
                   ) : (
-                    "Update Policy Allocation"
+                    "Update Sovereign Allocation Policy"
                   )}
                 </button>
 
@@ -1965,7 +1952,7 @@ export default function RealVaultApp() {
                   </div>
                 ) : (
                   <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-[11px] text-zinc-500 font-mono text-center">
-                    On-chain TEE operation via RebalancerAgent.sol · Requires admin signer for encrypted handles
+                    On-chain TEE operation via RebalancerAgent.sol · Rebalance execution requires Nox encrypted handles per wallet
                   </div>
                 )}
               </div>

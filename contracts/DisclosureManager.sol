@@ -4,71 +4,68 @@ pragma solidity ^0.8.35;
 import {Nox, euint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
 interface IFundVaultACL {
-    function getInvestors() external view returns (address[] memory);
     function getPosition(address investor) external view returns (euint256);
-    function rotateHandles(address[] calldata targetInvestors) external;
+    function rotateUserHandle(address investor) external;
 }
 
-/// @title DisclosureManager — Gestor de Control de Acceso (ACL) de 3 Niveles
-/// @notice Administra el acceso de inversores, auditores temporales y mercado público.
-///         Utiliza el patrón de Handle Rotation para revocar permisos de auditor de forma irrefutable.
+/// @title DisclosureManager — Sovereign Per-Investor Access Control List (ACL) Manager
+/// @notice Allows each investor to grant or revoke time-bound viewing access to auditors/regulators
+///         over their OWN encrypted vault position exclusively. Revocation is enforced cryptographically
+///         via single-user Handle Rotation.
 contract DisclosureManager {
-    address public admin;
     IFundVaultACL public vault;
 
-    mapping(address => bool) public isActiveAuditor;
-    mapping(address => uint256) public auditorGrantedAt;
-    address[] public auditorHistory;
+    // investor => auditor => isActive
+    mapping(address => mapping(address => bool)) public isAuditorForInvestor;
+    // investor => auditor => grantedAt timestamp
+    mapping(address => mapping(address => uint256)) public auditorGrantedAtForInvestor;
+    // investor => list of auditors
+    mapping(address => address[]) private investorAuditorHistory;
 
-    event AuditorAccessGranted(address indexed auditor, uint256 timestamp);
-    event AuditorAccessRevoked(address indexed auditor, uint256 timestamp);
-
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "DisclosureManager: caller is not admin");
-        _;
-    }
+    event AuditorAccessGranted(address indexed investor, address indexed auditor, uint256 timestamp);
+    event AuditorAccessRevoked(address indexed investor, address indexed auditor, uint256 timestamp);
 
     constructor(address _vault) {
-        admin = msg.sender;
+        require(_vault != address(0), "Invalid vault address");
         vault = IFundVaultACL(_vault);
     }
 
-    /// @notice Otorga acceso de lectura (viewer) a un auditor sobre todas las posiciones actuales
-    function grantAuditorAccess(address auditor) external onlyAdmin {
+    /// @notice Grant viewing permission to an auditor over msg.sender's encrypted position
+    function grantAuditorAccess(address auditor) external {
         require(auditor != address(0), "Invalid auditor address");
-        require(!isActiveAuditor[auditor], "Auditor already active");
+        require(auditor != msg.sender, "Cannot grant audit access to self");
+        require(!isAuditorForInvestor[msg.sender][auditor], "Auditor already active for investor");
 
-        address[] memory investorList = vault.getInvestors();
-        for (uint256 i = 0; i < investorList.length; i++) {
-            euint256 pos = vault.getPosition(investorList[i]);
-            Nox.allow(pos, auditor); // Permite al auditor descifrar off-chain esta posición
-        }
+        euint256 pos = vault.getPosition(msg.sender);
+        Nox.allow(pos, auditor); // Grant ACL key for msg.sender's encrypted position handle
 
-        isActiveAuditor[auditor] = true;
-        auditorGrantedAt[auditor] = block.timestamp;
-        auditorHistory.push(auditor);
+        isAuditorForInvestor[msg.sender][auditor] = true;
+        auditorGrantedAtForInvestor[msg.sender][auditor] = block.timestamp;
+        investorAuditorHistory[msg.sender].push(auditor);
 
-        emit AuditorAccessGranted(auditor, block.timestamp);
+        emit AuditorAccessGranted(msg.sender, auditor, block.timestamp);
     }
 
-    /// @notice Revoca acceso de un auditor mediante Handle Rotation en el FundVault
-    /// @dev Al rotar los handles, se crea un nuevo handle con un ACL limpio y se otorga permiso
-    ///      únicamente al inversor correspondiente. El auditor queda excluido del nuevo handle.
-    function revokeAuditorAccess(address auditor) external onlyAdmin {
-        require(isActiveAuditor[auditor], "Auditor is not active");
+    /// @notice Revoke auditor viewing access over msg.sender's position via single-user Handle Rotation
+    function revokeAuditorAccess(address auditor) external {
+        require(isAuditorForInvestor[msg.sender][auditor], "Auditor is not active for investor");
 
-        address[] memory investorList = vault.getInvestors();
-        
-        // Invocar la rotación de handles en el FundVault
-        vault.rotateHandles(investorList);
+        // Rotate only msg.sender's position handle in FundVault
+        vault.rotateUserHandle(msg.sender);
 
-        isActiveAuditor[auditor] = false;
+        isAuditorForInvestor[msg.sender][auditor] = false;
 
-        emit AuditorAccessRevoked(auditor, block.timestamp);
+        emit AuditorAccessRevoked(msg.sender, auditor, block.timestamp);
     }
 
-    /// @notice Devuelve el historial de auditores que han recibido acceso
-    function getAuditorHistory() external view returns (address[] memory) {
-        return auditorHistory;
+    /// @notice Check if auditor is active for a given investor
+    function isActiveAuditorFor(address investor, address auditor) external view returns (bool) {
+        return isAuditorForInvestor[investor][auditor];
+    }
+
+    /// @notice Get auditor history for a specific investor
+    function getInvestorAuditorHistory(address investor) external view returns (address[] memory) {
+        return investorAuditorHistory[investor];
     }
 }
+

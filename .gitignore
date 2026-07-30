@@ -20,3 +20,6 @@ RealVault_prompt_plan.md
 frontend/AGENTS.md
 frontend/CLAUDE.md
 
+# NAV Publisher secrets
+deployments/nav-publishers.json
+

@@ -1,0 +1,27 @@
+{
+  "safeAddress": "0xEB964eD961f6d901ffC36Bf3244430efa4418f9D",
+  "threshold": 2,
+  "owners": [
+    "0x1420cF8Bb9D92C3fDb674ECc5A57295c59078fDA",
+    "0x62343E8A4ae71bd464DBe61080617acEA7b3c365",
+    "0xCb070a4fc6988ae97c151E7fC7B80399D4cF3647"
+  ],
+  "network": "sepolia",
+  "chainId": 11155111,
+  "contracts": [
+    {
+      "name": "RwaPerpEngine",
+      "address": "0x9a42F328EbE36e11Abb92444e9EF4e257Ad33902"
+    },
+    {
+      "name": "ChainlinkOracle",
+      "address": "0x5e515fF92C77B9A06DfE09818930e8aFDaFa432E"
+    },
+    {
+      "name": "SignedNavOracle",
+      "address": "0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26"
+    }
+  ],
+  "note": "Signer 2 and 3 are ephemeral - replace with real team wallets for production",
+  "timestamp": "2026-07-30T19:25:26.164Z"
+}

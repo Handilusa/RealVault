@@ -1,0 +1,106 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "2.1 Create Position struct with encrypted margin handle": [
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785188792925
+      },
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785188806298
+      },
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189031598
+      }
+    ],
+    "2.2 Create IRwaPriceOracle interface": [
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785188797219
+      },
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189035714
+      },
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189174564
+      }
+    ],
+    "2.3 Create AssetConfig struct for registry": [
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785188801949
+      },
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189178683
+      },
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189260526
+      }
+    ],
+    "2. Implement core data structures and interfaces": [
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189260622
+      }
+    ],
+    "3.1 Create ChainlinkRwaOracleAdapter contract implementing IRwaPriceOracle": [
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189265389
+      },
+      {
+        "executionId": "cfd227ab-2300-4acd-91d7-242eec2c1a9d",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189269173
+      },
+      {
+        "executionId": "2bdaea1b-7003-44dd-a5db-11b7aa8038b1",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189785451
+      }
+    ],
+    "3.2 Implement latestPrice() with comprehensive Chainlink validations": [
+      {
+        "executionId": "2b97135d-bc70-446b-bd59-afbe9f2d5ba3",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189928829
+      }
+    ],
+    "3. Implement ChainlinkRwaOracleAdapter": [
+      {
+        "executionId": "2b97135d-bc70-446b-bd59-afbe9f2d5ba3",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189928959
+      }
+    ],
+    "4.1 Create SignedNavOracleAdapter contract implementing IRwaPriceOracle": [
+      {
+        "executionId": "2b97135d-bc70-446b-bd59-afbe9f2d5ba3",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189933667
+      },
+      {
+        "executionId": "2b97135d-bc70-446b-bd59-afbe9f2d5ba3",
+        "chatSessionId": "sess_f1982ef6-d5ff-49d2-b85f-1b81400cfbb2",
+        "timestamp": 1785189937932
+      }
+    ]
+  }
+}

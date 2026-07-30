@@ -45,6 +45,12 @@ async function fetchAllContractLogs(
       });
       allLogs.push(...logs);
     } catch (err: any) {
+      const isForbidden = err?.status === 403 || /\b403\b|forbidden/i.test(err?.message || "");
+      if (isForbidden) {
+        console.warn("RPC provider does not permit historical log queries.");
+        return allLogs;
+      }
+
       if (chunkSize > 500) {
         const half = Math.floor(chunkSize / 2);
         const log1 = await fetchAllContractLogs(provider, addresses, start, Math.min(start + half - 1, end), half);
