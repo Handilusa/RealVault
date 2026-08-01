@@ -1531,14 +1531,21 @@ export default function RealVaultApp() {
                       <div className="flex justify-between items-center text-zinc-600">
                         <span>Active Locked Margin (Perp Engine):</span>
                         <span className="font-semibold text-indigo-600">
-                          +{sandboxState.activeMargin.toFixed(2)} mUSDC
+                          <RedactionBar
+                            isRevealed={sandboxState.isDecrypted}
+                            value={`+${sandboxState.activeMargin.toFixed(2)} mUSDC`}
+                            encryptedText="+ • • . • • mUSDC"
+                          />
                         </span>
                       </div>
                       {sandboxState.isDecrypted && (
                         <div className="flex justify-between items-center text-zinc-900 font-bold pt-1 border-t border-dashed border-zinc-200">
                           <span>Total Net Equity:</span>
                           <span className="text-emerald-600 font-data text-sm">
-                            {((sandboxState.decryptedNumeric ?? parseFloat((sandboxState.decryptedBalance || "0").replace(/[^0-9.]/g, "") || "0")) + sandboxState.activeMargin).toFixed(2)} mUSDC
+                            <RedactionBar
+                              isRevealed={sandboxState.isDecrypted}
+                              value={`${((sandboxState.decryptedNumeric ?? parseFloat((sandboxState.decryptedBalance || "0").replace(/[^0-9.]/g, "") || "0")) + sandboxState.activeMargin).toFixed(2)} mUSDC`}
+                            />
                           </span>
                         </div>
                       )}
