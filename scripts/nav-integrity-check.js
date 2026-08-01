@@ -4,7 +4,7 @@ const path = require("path");
 
 async function main() {
   console.log("\n====================================================");
-  console.log("📊 RealVault — NAV Integrity Check (Zero Egress Proof)");
+  console.log("📊 RealVault - NAV Integrity Check (Zero Egress Proof)");
   console.log("   Network:", hre.network.name);
   console.log("====================================================\n");
 
@@ -51,7 +51,7 @@ async function main() {
   const lastBlock = await aggregator.lastUpdateBlock();
 
   console.log("\n====================================================");
-  console.log("🛡️ VERIFICATION REPORT — PROOF OF TRUSTLESSNESS");
+  console.log("🛡️ VERIFICATION REPORT - PROOF OF TRUSTLESSNESS");
   console.log("====================================================");
   console.log(`   Declared Public NAV Handle:  ${publicNavHandle}`);
   console.log(`   Updated Block Height:        ${lastBlock}`);

@@ -112,10 +112,11 @@ async function main() {
   // Add delay before NAV submission
   await new Promise(resolve => setTimeout(resolve, 3000));
   
-  const rustbNavE8 = 100000000n; // $1.00 in 8 decimals
+  const rustbNavE8 = 10542000000n; // $105.42 in 8 decimals
   const rustbPublishedAt = Math.floor(Date.now() / 1000);
   const rustbValidUntil = rustbPublishedAt + 86400; // 24 hours
-  const rustbNonce = 1n;
+  const lastRustbNonce = await signedNavAdapter.lastNonce(ASSET_ID_RUSTB);
+  const rustbNonce = lastRustbNonce + 1n;
 
   // Create message hash for ECDSA signature
   const rustbMessageHash = hre.ethers.solidityPackedKeccak256(
@@ -152,10 +153,11 @@ async function main() {
   // Add delay before NAV submission
   await new Promise(resolve => setTimeout(resolve, 3000));
   
-  const rcreNavE8 = 100000000000n; // $1,000.00 in 8 decimals
+  const rcreNavE8 = 25000000000n; // $250.00 in 8 decimals
   const rcrePublishedAt = Math.floor(Date.now() / 1000);
   const rcreValidUntil = rcrePublishedAt + 604800; // 7 days
-  const rcreNonce = 1n;
+  const lastRcreNonce = await signedNavAdapter.lastNonce(ASSET_ID_RCRE);
+  const rcreNonce = lastRcreNonce + 1n;
 
   // Create message hash for ECDSA signature
   const rcreMessageHash = hre.ethers.solidityPackedKeccak256(

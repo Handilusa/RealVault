@@ -30,7 +30,16 @@ async function main() {
   console.log("   - Max Positions per User:", maxPositions);
   console.log("   - Max Position Value: $100 USDC");
 
-  const tx = await rwaPerpEngine.setPositionLimits(maxPositions, maxPositionValue);
+  const feeData = await hre.ethers.provider.getFeeData();
+  const maxFeePerGas = (feeData.maxFeePerGas || 30n * 10n**9n) * 4n;
+  const maxPriorityFeePerGas = (feeData.maxPriorityFeePerGas || 3n * 10n**9n) * 4n;
+  const nonce = await hre.ethers.provider.getTransactionCount(deployer.address, "pending");
+
+  const tx = await rwaPerpEngine.setPositionLimits(maxPositions, maxPositionValue, {
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    nonce,
+  });
   await tx.wait();
 
   console.log("   ✅ Position limits set successfully");

@@ -138,26 +138,25 @@ export default function OnChainEventFeed() {
           } else if (parsed.name === "Withdrawn") {
             type = "withdraw";
             summary = `Confidential withdrawal executed for ${String(parsed.args[0]).slice(0, 8)}...`;
-          } else if (parsed.name === "HandlesRotated") {
+          } else if (parsed.name === "UserHandleRotated") {
             type = "acl";
-            const lpCount = Number(parsed.args[0]);
-            summary = `Re-encrypted position handles for ${lpCount} ${lpCount === 1 ? "LP" : "LPs"} via Nox.add()`;
+            summary = `Re-encrypted position handle for ${String(parsed.args[0]).slice(0, 10)}... via Nox.add()`;
           } else if (parsed.name === "NavAggregated") {
             type = "nav";
             const invCount = Number(parsed.args[0]);
             summary = `TEE enclave sum computed across ${invCount} investor ${invCount === 1 ? "handle" : "handles"}`;
           } else if (parsed.name === "AuditorAccessGranted") {
             type = "acl";
-            summary = `Auditor viewing permission granted to ${String(parsed.args[0]).slice(0, 10)}...`;
+            summary = `Auditor viewing permission granted to ${String(parsed.args[1]).slice(0, 10)}...`;
           } else if (parsed.name === "AuditorAccessRevoked") {
             type = "acl";
-            summary = `Auditor access revoked + handle rotation for ${String(parsed.args[0]).slice(0, 10)}...`;
+            summary = `Auditor access revoked + handle rotation for ${String(parsed.args[1]).slice(0, 10)}...`;
           } else if (parsed.name === "RebalanceExecuted") {
             type = "rebalance";
-            summary = `Rebalance execution #${parsed.args[0]} finalized on-chain`;
+            summary = `Rebalance execution #${parsed.args[1].toString()} finalized on-chain`;
           } else if (parsed.name === "TargetAllocationUpdated") {
             type = "policy";
-            summary = `Policy allocation updated to ${Number(parsed.args[0]) / 100}% / ${Number(parsed.args[1]) / 100}%`;
+            summary = `Policy allocation updated to ${Number(parsed.args[1]) / 100}% / ${Number(parsed.args[2]) / 100}%`;
           }
 
           parsedEvents.push({
@@ -179,7 +178,7 @@ export default function OnChainEventFeed() {
       setEvents(parsedEvents.slice(0, 20));
 
       if (parsedEvents.length === 0) {
-        setError(`Scanned ${(currentBlock - fromBlock).toLocaleString()} blocks — no contract events found in this range.`);
+        setError(`Scanned ${(currentBlock - fromBlock).toLocaleString()} blocks - no contract events found in this range.`);
       }
     } catch (err: any) {
       console.error("Failed to query on-chain events:", err);

@@ -7,7 +7,7 @@ interface ConfirmModalProps {
   isOpen: boolean;
   title: string;
   description: string;
-  /** Pass an async function that calls estimateGas — modal shows spinner until resolved */
+  /** Pass an async function that calls estimateGas - modal shows spinner until resolved */
   estimateGas?: () => Promise<bigint | number>;
   onConfirm: () => void;
   onCancel: () => void;

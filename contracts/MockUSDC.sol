@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-/// @title MockUSDC — ERC-20 de depósito para simular USDC en ETH Sepolia
+/// @title MockUSDC - ERC-20 de depósito para simular USDC en ETH Sepolia
 contract MockUSDC is ERC20 {
     address public owner;
 

@@ -12,7 +12,7 @@ Before implementing this design in Solidity, developers MUST understand these FH
 - **All balance arithmetic MUST use safe functions** to prevent balance corruption
 
 ### 2. **ALWAYS Validate Balance Before safeSub()**
-- ❌ `Nox.safeSub()` DOES NOT REVERT — saturates to zero silently (prevents side-channel leaks)
+- ❌ `Nox.safeSub()` DOES NOT REVERT - saturates to zero silently (prevents side-channel leaks)
 - ✅ Use `Nox.ge(balance, amount)` to check sufficient balance BEFORE subtraction
 - ✅ `require(Nox.ge(...), "Insufficient balance")` for explicit validation
 - **safeSub() returns zero on underflow without reverting** per ERC-7984 spec
@@ -23,7 +23,7 @@ Before implementing this design in Solidity, developers MUST understand these FH
 - **Never attempt to debit more than deposited margin** via `safeSub()`
 
 ### 4. **ALWAYS Use Encrypted Branching**
-- ❌ Never decrypt for comparisons — breaks privacy and enables side-channel attacks
+- ❌ Never decrypt for comparisons - breaks privacy and enables side-channel attacks
 - ✅ `Nox.le()`, `Nox.gt()` return encrypted `ebool` for comparisons
 - ✅ `Nox.select(condition, ifTrue, ifFalse)` for constant-time branching
 - **Treasury solvency checks MUST use encrypted comparison**, not explicit reverts
@@ -364,7 +364,7 @@ interface IDisclosureManager {
 
 ⚠️ **CRITICAL SECURITY WARNING** ⚠️
 
-**FHE operations do NOT expose plaintext for overflow checks** — bare `Nox.add()` and `Nox.sub()` silently wrap around within the encrypted ring. The Nox SDK provides safe arithmetic primitives that protect against overflow/underflow using encrypted comparisons without decryption.
+**FHE operations do NOT expose plaintext for overflow checks** - bare `Nox.add()` and `Nox.sub()` silently wrap around within the encrypted ring. The Nox SDK provides safe arithmetic primitives that protect against overflow/underflow using encrypted comparisons without decryption.
 
 ⚠️ **CRITICAL: Nox.safeSub() DOES NOT REVERT ON UNDERFLOW** ⚠️
 
@@ -391,7 +391,7 @@ euint256 newBalance = Nox.safeSub(userBalance, marginHandle);
 
 ⚠️ **NEVER USE BARE NOX.ADD() OR NOX.SUB()** ⚠️
 - These functions silently overflow/underflow within the encrypted ring
-- No revert on overflow — just wrapped values that break balance invariants
+- No revert on overflow - just wrapped values that break balance invariants
 - Use `Nox.safeAdd()` and `Nox.safeSub()` exclusively in all production code
 
 **Pattern 1: Accepting Encrypted Input from Frontend**
@@ -457,7 +457,7 @@ if (disclosureManagerContract != address(0)) {
 
 ### PnL Calculation Logic
 
-**PnL Calculation — Correct Approach:**
+**PnL Calculation - Correct Approach:**
 
 The system calculates PnL by applying a scalar to the encrypted margin. **The scalar DOES multiply by leverage (correctly)**, but applies to margin once, not to size twice.
 
@@ -597,7 +597,7 @@ function _scaledAmount(euint256 baseHandle, uint256 scalarE8) internal pure retu
 - **Loss cap = margin deposited in THIS position** (not total user balance across all positions)
 - Treasury solvency checked via encrypted comparison (`Nox.le`), no decryption required
 - If treasury insufficient for profit payout, `Nox.select()` enables graceful degradation (partial payout)
-- **No explicit revert** for treasury insufficiency — privacy-preserving design uses encrypted branching
+- **No explicit revert** for treasury insufficiency - privacy-preserving design uses encrypted branching
 
 **Key Security Properties:**
 1. **Loss cannot exceed margin**: `Nox.select(lossExceedsMargin, marginHandle, lossHandle)` enforces hard cap
@@ -854,7 +854,7 @@ sequenceDiagram
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+*A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
 ### Property 1: Position Creation Completeness
 
@@ -2326,8 +2326,8 @@ graph LR
 ```
 
 **ALWAYS use Nox safe arithmetic:**
-- `Nox.safeAdd()` and `Nox.safeSub()` — NEVER bare `Nox.add()` or `Nox.sub()`
-- FHE operations do NOT revert on overflow/underflow — they silently wrap within encrypted ring
+- `Nox.safeAdd()` and `Nox.safeSub()` - NEVER bare `Nox.add()` or `Nox.sub()`
+- FHE operations do NOT revert on overflow/underflow - they silently wrap within encrypted ring
 - Safe functions provide side-channel-free overflow protection via encrypted comparisons
 
 **ALWAYS cap losses to position margin:**
@@ -2484,7 +2484,7 @@ euint256 newBalance = Nox.safeAdd(userBalance, profitHandle);  // ✅ SAFE
 
 #### 4. Nox.safeSub() Saturation Behavior
 
-- **Nox.safeSub() DOES NOT REVERT ON UNDERFLOW** — saturates to zero silently
+- **Nox.safeSub() DOES NOT REVERT ON UNDERFLOW** - saturates to zero silently
 - Per ERC-7984 spec, this prevents balance leakage via revert side-channels
 - **ALWAYS use explicit Nox.ge() validation BEFORE subtraction**:
   ```solidity

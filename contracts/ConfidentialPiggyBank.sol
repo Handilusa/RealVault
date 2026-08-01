@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 
 import {Nox, euint256, externalEuint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
-/// @title ConfidentialPiggyBank — Multi-User Sovereign Encrypted Piggy Bank
+/// @title ConfidentialPiggyBank - Multi-User Sovereign Encrypted Piggy Bank
 /// @notice Simple encrypted savings contract allowing any wallet to maintain their own private balance.
 contract ConfidentialPiggyBank {
     mapping(address => euint256) private balances;

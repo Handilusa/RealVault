@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Nox, euint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 import {RwaPerpTypes} from "./RwaPerpTypes.sol";
 
-/// @title RwaPerpMath — Position Math Helpers for Confidential RWA Perpetual Engine
+/// @title RwaPerpMath - Position Math Helpers for Confidential RWA Perpetual Engine
 /// @notice Pure mathematical functions for PnL calculation and encrypted amount scaling
 /// @dev Phase 2 implementation: Position math logic without FHE operations (math only, no state changes)
 /// @custom:security All calculations use safe arithmetic patterns to prevent overflow/underflow
@@ -26,18 +26,11 @@ library RwaPerpMath {
     /// @custom:example baseHandle representing $1000 × scalarE8(50000000) = $500
     /// @custom:validation Validates Requirement 24.3 (no double leverage multiplication)
     /// @custom:phase-two Returns unmodified handle - full implementation requires Phase 3 FHE settlement
-    function _scaledAmount(euint256 baseHandle, uint256 scalarE8) internal pure returns (euint256) {
-        // Phase 2: Math logic only (stub)
-        // Phase 3 will implement actual FHE scaling:
-        // 1. Convert scalarE8 to encrypted: euint256 scalar = Nox.toEuint256(scalarE8)
-        // 2. Multiply: euint256 scaledValue = Nox.mul(baseHandle, scalar)
-        // 3. Convert scale factor: euint256 denominator = Nox.toEuint256(SCALE_FACTOR)
-        // 4. Divide: return Nox.div(scaledValue, denominator)
-        
-        // For now, return the baseHandle unmodified
-        // This function signature is defined to establish the correct architecture
-        scalarE8; // Silence unused parameter warning
-        return baseHandle;
+    function _scaledAmount(euint256 baseHandle, uint256 scalarE8) internal returns (euint256) {
+        euint256 scalar = Nox.toEuint256(scalarE8);
+        euint256 scaledValue = Nox.mul(baseHandle, scalar);
+        euint256 denominator = Nox.toEuint256(SCALE_FACTOR);
+        return Nox.div(scaledValue, denominator);
     }
 
     /// @notice Calculate PnL scalar percentage for a position based on entry/exit prices

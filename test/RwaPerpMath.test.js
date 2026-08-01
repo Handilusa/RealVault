@@ -5,7 +5,7 @@ const { ethers } = require("hardhat");
 // Phase 2: Position Math Tests
 // Tests for RwaPerpMath library functions (_scaledAmount and _calculatePnL)
 
-describe("RwaPerpMath — Position Math Library", function () {
+describe("RwaPerpMath - Position Math Library", function () {
     let mathContract;
     let owner;
 
@@ -19,7 +19,7 @@ describe("RwaPerpMath — Position Math Library", function () {
         await mathContract.waitForDeployment();
     });
 
-    describe("_calculatePnL — Unit Tests", function () {
+    describe("_calculatePnL - Unit Tests", function () {
         it("should calculate correct PnL for profitable long position", async function () {
             // Long position: entry $1000, exit $1100, 5x leverage
             // Expected PnL: ((1100 - 1000) / 1000) * 5 * 100% = 50%
@@ -229,7 +229,7 @@ describe("RwaPerpMath — Position Math Library", function () {
         });
     });
 
-    describe("_calculatePnL — Property-Based Tests (Property 13 & 14)", function () {
+    describe("_calculatePnL - Property-Based Tests (Property 13 & 14)", function () {
         // Property 13: Long Position PnL Calculation
         // Validates: Requirements 8.4
         // **Validates Requirements 8.4**

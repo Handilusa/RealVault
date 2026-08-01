@@ -4,7 +4,7 @@ pragma solidity ^0.8.35;
 import {Nox, euint256, externalEuint256, ebool} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @title FundVault — Sovereign Confidential RWA Vault
+/// @title FundVault - Sovereign Confidential RWA Vault
 /// @notice Manages confidential deposits, encrypted investor positions, and aggregate NAV handles.
 ///         Enforces per-user handle rotation to revoke audit access cryptographically.
 contract FundVault {
@@ -92,14 +92,16 @@ contract FundVault {
             investorCount++;
         }
 
-        // Add to confidential balance
-        positions[msg.sender] = Nox.add(positions[msg.sender], amount);
+        // Add to confidential balance with safe arithmetic
+        (ebool addOk, euint256 newPos) = Nox.safeAdd(positions[msg.sender], amount);
+        positions[msg.sender] = Nox.select(addOk, newPos, positions[msg.sender]);
         
         // Grant ACL permissions using centralized helper
         _grantPositionAcl(msg.sender, positions[msg.sender]);
 
-        // Update aggregate NAV
-        totalNav = Nox.add(totalNav, amount);
+        // Update aggregate NAV with safe arithmetic
+        (ebool navAddOk, euint256 newNav) = Nox.safeAdd(totalNav, amount);
+        totalNav = Nox.select(navAddOk, newNav, totalNav);
         Nox.allowThis(totalNav);
         if (navAggregator != address(0)) {
             Nox.allow(totalNav, navAggregator);
@@ -127,12 +129,16 @@ contract FundVault {
 
         euint256 amount = Nox.fromExternal(inputHandle, inputProof);
 
-        positions[msg.sender] = Nox.sub(positions[msg.sender], amount);
+        // Subtract from confidential balance with safe arithmetic (prevents underflow)
+        (ebool subOk, euint256 newPos) = Nox.safeSub(positions[msg.sender], amount);
+        positions[msg.sender] = Nox.select(subOk, newPos, positions[msg.sender]);
         
         // Grant ACL permissions using centralized helper
         _grantPositionAcl(msg.sender, positions[msg.sender]);
 
-        totalNav = Nox.sub(totalNav, amount);
+        // Update aggregate NAV with safe arithmetic
+        (ebool navSubOk, euint256 newNav) = Nox.safeSub(totalNav, amount);
+        totalNav = Nox.select(navSubOk, newNav, totalNav);
         Nox.allowThis(totalNav);
         if (navAggregator != address(0)) {
             Nox.allow(totalNav, navAggregator);

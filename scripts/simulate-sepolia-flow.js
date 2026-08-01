@@ -4,7 +4,7 @@ const path = require("path");
 
 async function main() {
   console.log("\n====================================================");
-  console.log("🧪 RealVault — End-to-End Testnet Simulator (Sepolia)");
+  console.log("🧪 RealVault - End-to-End Testnet Simulator (Sepolia)");
   console.log("   Network:", hre.network.name);
   console.log("====================================================\n");
 

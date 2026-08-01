@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 /**
  * @dev Hardhat-only test helper that implements the INoxCompute interface
  * methods used by RealVault contracts. Lives under contracts/test-helpers/
- * (NOT a mock — it's a local compute stub for offline Hardhat tests on chain 31337).
+ * (NOT a mock - it's a local compute stub for offline Hardhat tests on chain 31337).
  *
  * Implements exact function selectors from INoxCompute so Nox.sol library calls
  * resolve correctly when deployed bytecode is injected at 0x75C6...685.
@@ -19,20 +19,20 @@ contract LocalNoxCompute {
         return value;
     }
 
-    /// @dev allow(bytes32 handle, address account) — ACL grant (no-op in local tests)
+    /// @dev allow(bytes32 handle, address account) - ACL grant (no-op in local tests)
     function allow(bytes32 handle, address /* account */) external pure returns (bytes32) {
         return handle;
     }
 
-    /// @dev allowTransient(bytes32 handle, address account) — transient ACL (no-op)
+    /// @dev allowTransient(bytes32 handle, address account) - transient ACL (no-op)
     function allowTransient(bytes32 /* handle */, address /* account */) external pure {}
 
-    /// @dev isAllowed(bytes32 handle, address account) — always true locally
+    /// @dev isAllowed(bytes32 handle, address account) - always true locally
     function isAllowed(bytes32 /* handle */, address /* account */) external pure returns (bool) {
         return true;
     }
 
-    /// @dev validateInputProof(bytes32, address, bytes, uint8) — no-op for local tests
+    /// @dev validateInputProof(bytes32, address, bytes, uint8) - no-op for local tests
     function validateInputProof(bytes32 /* handle */, address /* owner */, bytes calldata /* proof */, uint8 /* teeType */) external pure {}
 
     /// @dev add(bytes32 a, bytes32 b) -> bytes32
@@ -74,6 +74,22 @@ contract LocalNoxCompute {
     /// @dev mul(bytes32 a, bytes32 b) -> bytes32
     function mul(bytes32 a, bytes32 b) external pure returns (bytes32) {
         return bytes32(uint256(a) * uint256(b));
+    }
+
+    /// @dev div(bytes32 a, bytes32 b) -> bytes32
+    function div(bytes32 a, bytes32 b) external pure returns (bytes32) {
+        uint256 valA = uint256(a);
+        uint256 valB = uint256(b);
+        if (valB == 0) return bytes32(0);
+        return bytes32(valA / valB);
+    }
+
+    /// @dev safeDiv(bytes32 a, bytes32 b) -> (bytes32 success, bytes32 result)
+    function safeDiv(bytes32 a, bytes32 b) external pure returns (bytes32, bytes32) {
+        uint256 valA = uint256(a);
+        uint256 valB = uint256(b);
+        if (valB == 0) return (bytes32(0), bytes32(0));
+        return (bytes32(uint256(1)), bytes32(valA / valB));
     }
 
     /// @dev select(bytes32 condition, bytes32 ifTrue, bytes32 ifFalse) -> bytes32

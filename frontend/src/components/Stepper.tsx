@@ -174,7 +174,7 @@ export default function Stepper({ activeSection, onStepClick, layout = "vertical
             }`}
             aria-current={isActive ? "step" : undefined}
           >
-            {/* Step Number Badge — perfectly aligned over 26px line center */}
+            {/* Step Number Badge - perfectly aligned over 26px line center */}
             <span
               ref={(el) => { badgeRefs.current[idx] = el; }}
               className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-mono transition-colors shrink-0 z-10 ${

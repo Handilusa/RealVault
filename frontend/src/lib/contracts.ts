@@ -16,13 +16,13 @@ export const DEPLOYED_ADDRESSES = {
   contracts: {
     MockUSDC: safeAddress("0x57A97B71aF262d60AA0B1408264f69698f287D70"),
     WrappedUSDC: safeAddress("0xd0F2E33A7f66852FacDD4400D28D1D14Ec38729e"),
-    FundVault: safeAddress("0xC37da66F128feFE3c91744E8b4aD9208c2083784"),
+    FundVault: safeAddress("0xf3fd634A74F7bc46A057A46bcc06C8a3a8514891"),
     NAVAggregator: safeAddress("0x931a690B7e0BFD0f2D2c2173291987fCB819d20a"),
     DisclosureManager: safeAddress("0x4F7eAafEF7680Ef59B120f62c27882dbB068fd6d"),
     RebalancerAgent: safeAddress("0x9f5975d9461Ce41f2c21DDfAB8426DBE00903285"),
-    RwaPerpEngine: safeAddress("0x9a42F328EbE36e11Abb92444e9EF4e257Ad33902"),
-    ChainlinkOracle: safeAddress("0x5e515fF92C77B9A06DfE09818930e8aFDaFa432E"),
-    SignedNavOracle: safeAddress("0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26"),
+    RwaPerpEngine: safeAddress("0x1947876abDc8c20901b17886674d1595bDA5976A"),
+    ChainlinkOracle: safeAddress("0x2deA5846a052D205971F4Aa17431369775f1898C"),
+    SignedNavOracle: safeAddress("0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5"),
     SafeMultisig: safeAddress("0xEB964eD961f6d901ffC36Bf3244430efa4418f9D"),
   },
   noxCompute: safeAddress("0x24Ef36Ec5b626D7DCD09a98F3083c2758F0F77bF"),
@@ -30,17 +30,15 @@ export const DEPLOYED_ADDRESSES = {
 };
 
 export const SEPOLIA_RPC_FALLBACKS = [
+  "https://sepolia.gateway.tenderly.co",
   "https://ethereum-sepolia-rpc.publicnode.com",
   "https://rpc.ankr.com/eth_sepolia",
   "https://1rpc.io/sepolia",
-  "https://sepolia.gateway.tenderly.co",
-  "https://ethereum-sepolia.blockpi.network/v1/rpc/public",
-  "https://rpc.sepolia.org",
 ];
 
 export const RPC_URL = SEPOLIA_RPC_FALLBACKS[0];
 
-// Cached working RPC index — avoids retrying known-dead endpoints on repeat calls
+// Cached working RPC index - avoids retrying known-dead endpoints on repeat calls
 let _cachedRpcIndex = 0;
 
 /**
@@ -62,13 +60,17 @@ export async function createFallbackProvider(testLogs = false): Promise<ethers.J
     try {
       const block = await withTimeout(provider.getBlockNumber(), 3500);
       if (testLogs) {
+        // Test a real historical range (5000 blocks) to catch providers
+        // that return 403/rate-limit on anything beyond trivial ranges
+        const deployFloor = DEPLOYED_ADDRESSES.deploymentBlock || 11328000;
+        const testFrom = Math.max(deployFloor, block - 5000);
         await withTimeout(
           provider.getLogs({
             address: DEPLOYED_ADDRESSES.contracts.FundVault,
-            fromBlock: Math.max(0, block - 100),
+            fromBlock: testFrom,
             toBlock: block,
           }),
-          4000
+          5000
         );
       }
       _cachedRpcIndex = idx; // cache working index
@@ -78,7 +80,7 @@ export async function createFallbackProvider(testLogs = false): Promise<ethers.J
       continue;
     }
   }
-  // All failed — return first one as last resort
+  // All failed - return first one as last resort
   return new ethers.JsonRpcProvider(SEPOLIA_RPC_FALLBACKS[0], 11155111, { staticNetwork: true });
 }
 
@@ -107,7 +109,7 @@ export const RWA_PORTFOLIO_ASSETS = [
   },
 ];
 
-// ─── ABIs — Synced with actual deployed Solidity contracts ───────────────────
+// ─── ABIs - Synced with actual deployed Solidity contracts ───────────────────
 
 export const FUND_VAULT_ABI = [
   "function deposit(bytes32 inputHandle, bytes calldata inputProof, uint256 plainAmount) external",
@@ -193,7 +195,7 @@ export const ASSET_IDS = {
   rCRE: ethers.id("rCRE"),
 };
 
-// ─── Gas Benchmark Data — Loaded dynamically from benchmark results ──────────
+// ─── Gas Benchmark Data - Loaded dynamically from benchmark results ──────────
 export interface GasBenchmarkEntry {
   investors: number;
   gas: number;

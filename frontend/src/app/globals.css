@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════════
-   REALVAULT — INSTITUTIONAL LIGHT THEME
+   REALVAULT - INSTITUTIONAL LIGHT THEME
    Clean zinc whites, indigo accent, editorial precision.
    Inspired by Mercury, Linear, Vercel dashboards.
    
-   Signature element: the redaction-bar reveal — the single
+   Signature element: the redaction-bar reveal - the single
    memorable interaction that embodies confidential disclosure.
    Everything else stays quiet and disciplined around it.
    ═══════════════════════════════════════════════════════════════ */
@@ -667,4 +667,46 @@ input[type="range"]::-webkit-slider-thumb {
     size: A4;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   VIEW TRANSITIONS API - SMOOTH TOUCHSCREEN HORIZONTAL SWIPE
+   Zero white flash, native GPU snapshot cross-slide animation.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Forward navigation (left swipe: old slides left -100%, new slides in right +100%) */
+html[data-nav-direction="forward"]::view-transition-old(root) {
+  animation: swipe-out-left 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+html[data-nav-direction="forward"]::view-transition-new(root) {
+  animation: swipe-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Backward navigation (right swipe: old slides right +100%, new slides in left -100%) */
+html[data-nav-direction="back"]::view-transition-old(root) {
+  animation: swipe-out-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+html[data-nav-direction="back"]::view-transition-new(root) {
+  animation: swipe-in-left 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes swipe-out-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+@keyframes swipe-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes swipe-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes swipe-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
 

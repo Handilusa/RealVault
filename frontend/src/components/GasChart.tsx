@@ -61,7 +61,7 @@ export default function GasChart() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-zinc-200">
         <div>
           <h3 className="text-base font-bold text-zinc-900">
-            Gas Benchmarks — On-Chain Execution Scaling
+            Gas Benchmarks - On-Chain Execution Scaling
           </h3>
           <p className="text-sm text-zinc-500 mt-1">
             Gas consumption per operation relative to investor cohort size (N) measured on Sepolia

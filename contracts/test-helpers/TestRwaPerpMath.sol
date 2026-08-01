@@ -5,7 +5,7 @@ import {Nox, euint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox
 import {RwaPerpTypes} from "../RwaPerpTypes.sol";
 import {RwaPerpMath} from "../RwaPerpMath.sol";
 
-/// @title TestRwaPerpMath — Test Wrapper for RwaPerpMath Library
+/// @title TestRwaPerpMath - Test Wrapper for RwaPerpMath Library
 /// @notice Exposes internal library functions for testing
 /// @dev This contract is ONLY for testing purposes and should NOT be deployed to production
 contract TestRwaPerpMath {
@@ -30,7 +30,7 @@ contract TestRwaPerpMath {
     function testScaledAmount(
         euint256 baseHandle,
         uint256 scalarE8
-    ) external view returns (euint256) {
+    ) external returns (euint256) {
         return RwaPerpMath._scaledAmount(baseHandle, scalarE8);
     }
 }

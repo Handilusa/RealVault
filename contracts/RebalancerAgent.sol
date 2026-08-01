@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 
 import {Nox, euint256, externalEuint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
-/// @title RebalancerAgent — Sovereign Per-User Confidential Rebalancing Agent
+/// @title RebalancerAgent - Sovereign Per-User Confidential Rebalancing Agent
 /// @notice Executes portfolio rebalancing between 2 encrypted asset sleeves per-user (msg.sender)
 ///         without exposing individual trade amounts or position sizes.
 contract RebalancerAgent {

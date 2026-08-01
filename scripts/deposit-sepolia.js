@@ -7,7 +7,7 @@ async function main() {
   const amountBig = BigInt(amountStr);
 
   console.log(`\n====================================================`);
-  console.log(`🔒 RealVault — Executing Encrypted Deposit on Sepolia`);
+  console.log(`🔒 RealVault - Executing Encrypted Deposit on Sepolia`);
   console.log(`   Amount: ${amountStr} mUSDC`);
   console.log(`====================================================\n`);
 

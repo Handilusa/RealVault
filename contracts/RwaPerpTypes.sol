@@ -3,7 +3,7 @@ pragma solidity ^0.8.35;
 
 import {euint256} from "@iexec-nox/nox-protocol-contracts/contracts/sdk/Nox.sol";
 
-/// @title RwaPerpTypes — Data Structures for Confidential RWA Perpetual Engine
+/// @title RwaPerpTypes - Data Structures for Confidential RWA Perpetual Engine
 /// @notice Defines core data structures for managing synthetic perpetual positions on RWA assets
 /// @dev Storage-optimized struct with encrypted margin and immutable price snapshots
 library RwaPerpTypes {

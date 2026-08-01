@@ -1,10 +1,10 @@
 /**
- * RealVault — Multi-Investor Gas Scaling Simulation (ETH Sepolia)
+ * RealVault - Multi-Investor Gas Scaling Simulation (ETH Sepolia)
  * 
  * This script measures the O(n) gas scaling of:
- *   1. DisclosureManager.grantAuditorAccess()  — iterates all investors calling Nox.allow()
- *   2. DisclosureManager.revokeAuditorAccess() — triggers FundVault.rotateHandles() O(n)
- *   3. NAVAggregator.aggregateAll()            — FHE sum across all positions
+ *   1. DisclosureManager.grantAuditorAccess()  - iterates all investors calling Nox.allow()
+ *   2. DisclosureManager.revokeAuditorAccess() - triggers FundVault.rotateHandles() O(n)
+ *   3. NAVAggregator.aggregateAll()            - FHE sum across all positions
  * 
  * Strategy: Uses @iexec-nox/handle SDK to create real encrypted deposits
  * for multiple investors, then measures gas at each investor count.
@@ -18,7 +18,7 @@ const path = require("path");
 
 async function main() {
   console.log("\n====================================================");
-  console.log("📊 RealVault — Multi-Investor Gas Scaling Benchmark");
+  console.log("📊 RealVault - Multi-Investor Gas Scaling Benchmark");
   console.log("   Network:", hre.network.name);
   console.log("====================================================\n");
 
@@ -154,7 +154,7 @@ async function main() {
   // Phase 2: Output Results Table & JSON
   // ========================================
   console.log("\n====================================================");
-  console.log("📊 GAS SCALING RESULTS — O(n) Handle Rotation");
+  console.log("📊 GAS SCALING RESULTS - O(n) Handle Rotation");
   console.log("====================================================");
   console.log("\n| Investors | Grant Auditor | Revoke (Rotate) | NAV Aggregate |");
   console.log("|-----------|--------------|-----------------|---------------|");

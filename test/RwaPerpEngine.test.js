@@ -28,7 +28,7 @@ const { ethers } = require("hardhat");
  * See: contracts/test-helpers/LocalNoxCompute.sol:29-31
  */
 
-describe("RwaPerpEngine — Position Lifecycle", function () {
+describe("RwaPerpEngine - Position Lifecycle", function () {
     let rwaPerpEngine;
     let fundVault;
     let mockUSDC;

@@ -1,6 +1,6 @@
 # iExec Nox Protocol Developer Feedback (`feedback.md`)
 
-> **Project**: RealVault — Confidential RWA Fund Router  
+> **Project**: RealVault - Confidential RWA Fund Router  
 > **Hackathon**: iExec WTF Hackathon Summer Edition (2026)  
 > **Author**: RealVault Team  
 > **Target Network**: Ethereum Sepolia (`chainId: 11155111`)
@@ -70,7 +70,7 @@ The Nox Protocol provides robust confidential primitives on-chain while keeping 
 
 ### 4.2 Critical Technical Challenges & Resolutions
 
-#### Challenge 1: FHE Safe Arithmetic Pattern — Side-Channel Protection ⚡
+#### Challenge 1: FHE Safe Arithmetic Pattern - Side-Channel Protection ⚡
 
 **Problem**: Tuple destructuring with `Nox.safeAdd()` and `Nox.safeSub()` was discarding the `ebool` overflow flag, creating potential side-channel leaks.
 
@@ -143,7 +143,7 @@ await rwaPerpEngine.connect(user).openPositionTest(
 
 **Recommendation for iExec Team**: Consider documenting this UDVT/ethers interaction pattern in the Nox developer guide. Many developers will encounter this when writing tests.
 
-#### Challenge 3: Oracle Staleness — EVM Time vs JavaScript Time ⏱️
+#### Challenge 3: Oracle Staleness - EVM Time vs JavaScript Time ⏱️
 
 **Problem**: Tests were failing with "Asset not available for settlement" despite oracle updates appearing correct.
 
@@ -172,7 +172,7 @@ await mockChainlinkFeed.updateRoundData(roundId, price, currentTime, roundId);
 
 **Key Learning**: ALWAYS synchronize oracle timestamps with `block.timestamp`. This is critical for staleness validation in production.
 
-#### Challenge 4: FundVault Test Consistency — Mock vs Integration Pattern 🔄
+#### Challenge 4: FundVault Test Consistency - Mock vs Integration Pattern 🔄
 
 **Problem**: Tests were failing when closing positions:
 ```
@@ -435,15 +435,136 @@ euint256 cappedLoss = Nox.select(lossExceedsMargin, marginHandle, lossHandle);
 
 ---
 
-## 5. Overall Conclusion & Next Steps
+## 6. Live Testnet Incident Post-Mortem: FHE 256-bit Underflow Mitigation
+
+**Date**: July 2026  
+**Target Contract**: `FundVault.sol` (`_internalWithdraw`)  
+**Network**: Ethereum Sepolia (`chainId: 11155111`)  
+**Severity**: High (Confidential Handle State Corruption)  
+**Status**: RESOLVED ✅
+
+### 6.1 Vulnerability Description & Empirical Discovery
+
+During live testnet verification of confidential withdrawals, decrypting an investor's position handle via the iExec Nox TEE Gateway yielded an astronomical value:
+$$\text{Decrypted Value: } 1.157920892373162 \times 10^{77} \text{ mUSDC}$$
+
+#### Cryptographic & Mathematical Diagnosis:
+1. **Unprotected `Nox.sub`**: `FundVault._internalWithdraw()` used bare `Nox.sub(positions[msg.sender], amount)` without `ebool` validation or `Nox.select()`.
+2. **Precision Mismatch Trigger**: An earlier deposit encrypted 100 raw units (`BigInt(100)`). A subsequent withdrawal requested 200 units (`200 * 1e6`).
+3. **256-bit Underflow**: Executing $100 - 200$ in unsigned 256-bit FHE arithmetic wrapped around to $2^{256} - 100$, producing `115,792,089,237,316,195,423,570,985,008,687,907,853,269,984,665,640,564,039,457,584,007,913,129,639,936`.
+4. **TEE Enclave Decryption**: The Nox Gateway faithfully decrypted this corrupted handle, exposing the $2^{256}$ underflow state.
+
+### 6.2 Remediation & Architectural Enforcement
+
+#### Contract Patch (`FundVault.sol`):
+Replaced bare `Nox.add` / `Nox.sub` in `_internalDeposit()` and `_internalWithdraw()` with the **Safe FHE Arithmetic & Encrypted Branching Pattern**:
+
+```solidity
+// ✅ SECURE: Safe FHE Subtraction with Constant-Time Fallback
+(ebool subOk, euint256 result) = Nox.safeSub(positions[msg.sender], amount);
+positions[msg.sender] = Nox.select(subOk, result, positions[msg.sender]);
+```
+
+#### Frontend Validation (`portfolio/page.tsx`):
+- Enforced 6-decimal precision matching (`ethers.parseUnits(amount, 6)`).
+- Implemented client-side withdrawal ceiling checks against the decrypted balance to prevent sending invalid withdrawal requests.
+
+---
+
+## 7. Overall Conclusion & Next Steps
 
 The iExec Nox protocol provides production-grade confidential computing primitives that enable institutional-grade DeFi applications. The Phase 3 testing journey revealed critical patterns for FHE development that should be documented for future developers.
 
 **Immediate Next Steps**:
-1. Deploy `RwaPerpEngine` to Ethereum Sepolia with real Nox Gateway integration
+1. Deploy updated `FundVault` and `RwaPerpEngine` to Ethereum Sepolia
 2. Implement property-based testing for mathematical invariants
 3. Conduct formal security audit focusing on side-channel protection
 4. Integrate frontend with encrypted input generation (`@iexec-nox/handle`)
 
 **Long-term Vision**: Build a comprehensive RWA DeFi ecosystem on iExec Nox, leveraging hardware-enforced confidentiality to unlock institutional capital for on-chain tokenized real-world assets.
+
+---
+
+## 8. Frontend Integration Bugs & Errors (July 2026 - Oracle Charts Session)
+
+**Date**: July 2026  
+**Feature**: Live Oracle Price Charts, Investor Privacy Portal, Confidential Rebalance Engine  
+**Network**: Ethereum Sepolia (`chainId: 11155111`)
+
+### 8.1 HTTP 400 - API Route Case-Sensitivity Mismatch
+
+**Bug**: The `/api/charts/[asset]` REST endpoint returned HTTP 400 when the frontend requested `/api/charts/rGOLD` but the route handler compared against uppercase keys (`RGOLD`).
+
+**Root Cause**: Next.js App Router passes dynamic route params as-is from the URL. The `ASSET_CONFIGS` object used `rGOLD` as key, but string comparison was case-sensitive.
+
+**Fix**:
+```typescript
+// ❌ BEFORE: Case-sensitive match fails
+const config = ASSET_CONFIGS[rawAsset];
+
+// ✅ AFTER: Case-insensitive lookup
+const assetKey = Object.keys(ASSET_CONFIGS).find(
+  k => k.toLowerCase() === rawAsset.toLowerCase()
+);
+```
+
+**Key Learning**: Always implement case-insensitive matching for user-facing API route parameters, especially when asset tickers can be typed in mixed case.
+
+### 8.2 Incorrect Oracle Price - Hardcoded Seed vs. Live On-Chain Price
+
+**Bug**: The rGOLD chart displayed `$2,958.73` while the actual Chainlink XAU/USD oracle price was `$4,044.53`. The chart's historical data generated a linear ramp to a stale hardcoded price.
+
+**Root Cause**: Initial implementation used a static `currentPrice` constant instead of querying the live Chainlink oracle on Sepolia.
+
+**Fix**: Added on-chain price fetch via `createFallbackProvider` with multi-RPC failover:
+```typescript
+const contract = new ethers.Contract(config.feedAddress, CHAINLINK_ABI, provider);
+const [, answer] = await contract.latestRoundData();
+const livePrice = Number(answer) / 1e8; // Chainlink 8-decimal format
+```
+
+Additionally replaced the linear interpolation seed algorithm with **Reverse Geometric Brownian Motion (GBM)** using a deterministic Mulberry32 PRNG seeded by asset name hash, producing financially realistic historical paths that converge to the live price.
+
+**Key Learning**: Never hardcode oracle prices in chart endpoints. Always fetch the real-time price on-chain and use it as the anchor for any synthetic/seed data generation.
+
+### 8.3 Next.js 16 `context.params` is a Promise
+
+**Bug**: API route handler failed silently when accessing `context.params.asset` directly.
+
+**Root Cause**: In Next.js 16 App Router, `context.params` is now a `Promise` and must be awaited:
+```typescript
+// ❌ BEFORE: Next.js 15 pattern
+const { asset } = context.params;
+
+// ✅ AFTER: Next.js 16 pattern
+const params = await context.params;
+const { asset } = params;
+```
+
+**Key Learning**: Next.js 16 made `params` async in API routes. This is a breaking change from Next.js 15 that is not immediately obvious from error messages.
+
+### 8.4 Hardcoded Contract Count ("6 smart contracts" with 10 deployed)
+
+**Bug**: The "Proofs & Verification" section header displayed "6 smart contracts deployed" while `DEPLOYED_ADDRESSES.contracts` contained 10 entries (MockUSDC, WrappedUSDC, FundVault, NAVAggregator, DisclosureManager, RebalancerAgent, RwaPerpEngine, ChainlinkOracle, SignedNavOracle, SafeMultisig).
+
+**Root Cause**: The contract count was hardcoded as a string literal `"6"` instead of being computed dynamically from the contracts object.
+
+**Fix**:
+```tsx
+// ❌ BEFORE: Hardcoded
+<p>6 smart contracts deployed and verified...</p>
+
+// ✅ AFTER: Dynamic
+<p>{Object.keys(DEPLOYED_ADDRESSES.contracts).length} smart contracts deployed...</p>
+```
+
+**Key Learning**: Never hardcode counts that derive from data structures. Always compute them dynamically to prevent stale UI when contracts are added or removed.
+
+### 8.5 SafeMultisig Grid Orphan - Empty Space in 3-Column Layout
+
+**Bug**: With 10 contracts in a 3-column grid (`3×3 = 9 slots`), SafeMultisig occupied position 10, leaving two empty cells in the last row.
+
+**Fix**: The last contract card dynamically spans all 3 columns (`sm:col-span-2 md:col-span-3`) with a subtle indigo gradient background and the full untruncated address, plus a governance badge ("2-of-3 Gnosis Safe Multisig Governance").
+
+**Key Learning**: When rendering dynamic collections in CSS Grid, always handle the remainder case (`count % columns !== 0`) to prevent orphan cards with empty space.
 

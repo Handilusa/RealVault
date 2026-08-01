@@ -9,7 +9,7 @@ interface IFundVault {
     function investorCount() external view returns (uint256);
 }
 
-/// @title NAVAggregator — Public Read-Only Aggregate NAV Calculator via Nox TEE
+/// @title NAVAggregator - Public Read-Only Aggregate NAV Calculator via Nox TEE
 /// @notice Computes public aggregate fund NAV on-chain using homomorphic addition (`Nox.add`)
 ///         across encrypted handles without revealing individual position amounts.
 contract NAVAggregator {

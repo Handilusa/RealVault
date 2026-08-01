@@ -3,32 +3,32 @@
   "chainId": 11155111,
   "deployer": "0x1420cF8Bb9D92C3fDb674ECc5A57295c59078fDA",
   "treasury": "0x1420cF8Bb9D92C3fDb674ECc5A57295c59078fDA",
-  "timestamp": "2026-07-30T19:10:01.894Z",
+  "timestamp": "2026-07-31T21:12:48.911Z",
   "contracts": {
-    "RwaPerpEngine": "0x9a42F328EbE36e11Abb92444e9EF4e257Ad33902",
-    "ChainlinkRwaOracleAdapter": "0x5e515fF92C77B9A06DfE09818930e8aFDaFa432E",
-    "SignedNavOracleAdapter": "0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26",
-    "FundVault": "0xC37da66F128feFE3c91744E8b4aD9208c2083784"
+    "RwaPerpEngine": "0x1947876abDc8c20901b17886674d1595bDA5976A",
+    "ChainlinkRwaOracleAdapter": "0x2deA5846a052D205971F4Aa17431369775f1898C",
+    "SignedNavOracleAdapter": "0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5",
+    "FundVault": "0xf3fd634A74F7bc46A057A46bcc06C8a3a8514891"
   },
   "oracles": {
     "rGOLD": {
       "assetId": "0x2e7fd50d0f585852d6122ee3cce47f9d363e2f3963ce026f3485a8d624e5ff1b",
-      "adapter": "0x5e515fF92C77B9A06DfE09818930e8aFDaFa432E",
+      "adapter": "0x2deA5846a052D205971F4Aa17431369775f1898C",
       "chainlinkFeed": "0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea",
       "heartbeat": 3600
     },
     "rUSTB": {
       "assetId": "0xd5dcb2642939fda70c6a89d3baf01942afdb544db2c3aef175c5230ef6b416a1",
-      "adapter": "0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26",
+      "adapter": "0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5",
       "maxStaleness": 86400
     },
     "rCRE": {
       "assetId": "0x83adc1652c51bc68046c7ab2f25d5736e1ec46d32ad6c61d7d9b5ff2d5bced44",
-      "adapter": "0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26",
+      "adapter": "0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5",
       "maxStaleness": 604800
     }
   },
   "authorized": true,
-  "authorizedTimestamp": "2026-07-30T18:26:25.991Z",
+  "authorizedTimestamp": "2026-07-30T21:29:47.769Z",
   "redeployReason": "RwaPerpEngine redeployed with new FundVault (ACL fix)"
 }

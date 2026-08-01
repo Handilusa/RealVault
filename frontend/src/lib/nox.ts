@@ -3,23 +3,23 @@ import { createEthersHandleClient } from "@iexec-nox/handle";
 /**
  * Gets or initializes the Nox Handle Client from a Web3 provider.
  */
-export async function getHandleClient(provider: any) {
-  return await createEthersHandleClient(provider);
+export async function getHandleClient(signerOrProvider: any) {
+  return await createEthersHandleClient(signerOrProvider);
 }
 
 /**
  * Encrypts an input value using Nox FHE for a specific target contract.
- * @param provider Browser Web3 provider
+ * @param signerOrProvider Browser Web3 Signer or Provider (Signer strongly recommended to bind EIP-712 proof to active account)
  * @param amount Amount to encrypt (BigInt uint256)
  * @param targetContract Address of the destination contract (e.g. FundVault or RwaPerpEngine)
  * @returns { handle: string, handleProof: string }
  */
 export async function encryptAmount(
-  provider: any,
+  signerOrProvider: any,
   amount: bigint,
   targetContract: string
 ): Promise<{ handle: `0x${string}`; handleProof: `0x${string}` }> {
-  const client = await getHandleClient(provider);
+  const client = await getHandleClient(signerOrProvider);
   const result = await client.encryptInput(
     amount,
     "uint256",

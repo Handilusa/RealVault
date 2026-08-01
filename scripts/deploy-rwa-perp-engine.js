@@ -4,7 +4,7 @@ const path = require("path");
 
 async function main() {
   console.log("\n====================================================");
-  console.log("🚀 RwaPerpEngine — Deployment Script");
+  console.log("🚀 RwaPerpEngine - Deployment Script");
   console.log("   Network:", hre.network.name);
   console.log("====================================================\n");
 

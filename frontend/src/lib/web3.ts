@@ -50,7 +50,7 @@ export async function getReadOnlyProvider(): Promise<ethers.Provider> {
         return browserProvider;
       }
     } catch {
-      // Wallet not connected or wrong network — fall through to fallback provider
+      // Wallet not connected or wrong network - fall through to fallback provider
     }
   }
   return createFallbackProvider();
@@ -129,6 +129,12 @@ export function parseWeb3Error(err: any): string {
   }
 
   const errStr = (typeof err === "object" ? JSON.stringify(err) : "") + (err.message || "") + (err.data || "") + (err.reason || "");
+  if (errStr.includes("ae385f38") || errStr.includes("owner mismatch")) {
+    return "Nox TEE Security Error: The active wallet address did not match the encryption proof identity. Please try again with your active wallet.";
+  }
+  if (errStr.includes("not an investor")) {
+    return "Your wallet has not deposited mUSDC into FundVault yet. Please visit the Portfolio page and deposit mUSDC first.";
+  }
   if (errStr.includes("e450d38c") || errStr.includes("ERC20InsufficientBalance") || errStr.includes("insufficient balance")) {
     return "Insufficient mUSDC balance in your wallet. Click '+ Mint mUSDC' to claim test tokens.";
   }

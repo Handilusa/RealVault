@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document specifies requirements for RealVault — a Confidential RWA Synthetic Exposure Engine that provides private margin, verifiable settlement, and transparent RWA reference pricing. The system enables institutional investors to gain leveraged exposure to real-world assets through synthetic perpetual positions while maintaining full privacy via iExec Nox FHE encryption. The architecture implements pluggable oracle adapters that match each RWA asset class's genuine valuation methodology rather than mapping crypto price feeds to RWA labels.
+This document specifies requirements for RealVault - a Confidential RWA Synthetic Exposure Engine that provides private margin, verifiable settlement, and transparent RWA reference pricing. The system enables institutional investors to gain leveraged exposure to real-world assets through synthetic perpetual positions while maintaining full privacy via iExec Nox FHE encryption. The architecture implements pluggable oracle adapters that match each RWA asset class's genuine valuation methodology rather than mapping crypto price feeds to RWA labels.
 
 ## Glossary
 

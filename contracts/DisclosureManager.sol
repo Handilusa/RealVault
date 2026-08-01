@@ -8,7 +8,7 @@ interface IFundVaultACL {
     function rotateUserHandle(address investor) external;
 }
 
-/// @title DisclosureManager — Sovereign Per-Investor Access Control List (ACL) Manager
+/// @title DisclosureManager - Sovereign Per-Investor Access Control List (ACL) Manager
 /// @notice Allows each investor to grant or revoke time-bound viewing access to auditors/regulators
 ///         over their OWN encrypted vault position exclusively. Revocation is enforced cryptographically
 ///         via single-user Handle Rotation.

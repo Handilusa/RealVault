@@ -71,7 +71,7 @@ This script will:
 **Expected Output:**
 ```
 ====================================================
-🚀 RwaPerpEngine — Deployment Script
+🚀 RwaPerpEngine - Deployment Script
    Network: sepolia
 ====================================================
 

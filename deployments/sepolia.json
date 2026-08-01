@@ -2,14 +2,15 @@
   "network": "sepolia",
   "chainId": 11155111,
   "deployer": "0x1420cF8Bb9D92C3fDb674ECc5A57295c59078fDA",
-  "timestamp": "2026-07-30T19:18:28.157Z",
+  "timestamp": "2026-07-31T21:12:48.894Z",
   "contracts": {
     "MockUSDC": "0x57A97B71aF262d60AA0B1408264f69698f287D70",
     "WrappedUSDC": "0xd0F2E33A7f66852FacDD4400D28D1D14Ec38729e",
-    "FundVault": "0xC37da66F128feFE3c91744E8b4aD9208c2083784",
+    "FundVault": "0xf3fd634A74F7bc46A057A46bcc06C8a3a8514891",
     "NAVAggregator": "0x931a690B7e0BFD0f2D2c2173291987fCB819d20a",
     "DisclosureManager": "0x4F7eAafEF7680Ef59B120f62c27882dbB068fd6d",
-    "RebalancerAgent": "0x9f5975d9461Ce41f2c21DDfAB8426DBE00903285"
+    "RebalancerAgent": "0x9f5975d9461Ce41f2c21DDfAB8426DBE00903285",
+    "RwaPerpEngine": "0x1947876abDc8c20901b17886674d1595bDA5976A"
   },
   "redeployReason": "ACL fix - authorizedContractList for FHE handle grants"
 }

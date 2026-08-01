@@ -53,7 +53,7 @@ const parseChainId = (hex: string): { chainId: number | null; prefix: string; ne
   if (clean.startsWith("0x00000001")) {
     return { chainId: 1, prefix: clean.slice(0, 10), networkName: "Ethereum Mainnet" };
   }
-  // Unknown — try to extract hex bytes 3-5 as chain id
+  // Unknown - try to extract hex bytes 3-5 as chain id
   try {
     const possibleId = parseInt(clean.slice(6, 12), 16);
     if (possibleId > 0 && possibleId < 999999999) {
@@ -210,7 +210,7 @@ export default function FheHandleInspector({
             ) : null}
           </div>
           <p className="text-sm text-zinc-500 mt-1">
-            Live on-chain encrypted handles fetched from deployed Sepolia contracts — no mock data
+            Live on-chain encrypted handles fetched from deployed Sepolia contracts - no mock data
           </p>
         </div>
 

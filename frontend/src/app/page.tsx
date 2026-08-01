@@ -44,10 +44,10 @@ const toHexHandle = (val: any): string | null => {
   }
 };
 
-// On-chain investor entry — balances are TEE encrypted, not readable from frontend
+// On-chain investor entry - balances are TEE encrypted, not readable from frontend
 interface OnChainInvestor {
   address: string;
-  positionHandle: string; // raw euint256 hex handle — opaque cipher
+  positionHandle: string; // raw euint256 hex handle - opaque cipher
 }
 
 export default function RealVaultApp() {
@@ -82,7 +82,7 @@ export default function RealVaultApp() {
   // Compliance Certificate Modal State
   const [certModalOpen, setCertModalOpen] = useState<boolean>(false);
 
-  // Section 4: Dashboard state — ALL values from on-chain reads
+  // Section 4: Dashboard state - ALL values from on-chain reads
   const [dashboardState, setDashboardState] = useState({
     investorCount: 0,
     investors: [] as OnChainInvestor[],
@@ -106,7 +106,7 @@ export default function RealVaultApp() {
     isInvestorOnChain: false,
     isDecrypted: false,
     decryptedBalance: null as string | null,
-    shadowBalance: 0, // tracked locally — cumulative deposits minus withdrawals
+    shadowBalance: 0, // tracked locally - cumulative deposits minus withdrawals
     statusMsg: null as string | null,
     txHash: null as string | null,
     loaded: false,
@@ -533,9 +533,9 @@ export default function RealVaultApp() {
 
       setSandboxState((prev) => ({ ...prev, statusMsg: "Encrypting deposit amount via Nox TEE Gateway..." }));
 
-      const depositAmountBigInt = BigInt(sandboxState.depositAmount);
+      const depositE6 = ethers.parseUnits(sandboxState.depositAmount, 6);
       const { handle, handleProof } = await handleClient.encryptInput(
-        depositAmountBigInt,
+        BigInt(depositE6),
         "uint256",
         DEPLOYED_ADDRESSES.contracts.FundVault as `0x${string}`
       );
@@ -582,7 +582,9 @@ export default function RealVaultApp() {
         try {
           const res = await handleClient.decrypt(sandboxState.positionHandle as `0x${string}`).catch(() => null);
           if (res && res.value !== undefined) {
-            const valNum = parseFloat(res.value.toString());
+            const rawVal = BigInt(res.value.toString());
+            // Backward compatibility: support both old raw integer handles (< 10000) and 6-decimal handles
+            const valNum = rawVal < 10000n && rawVal > 0n ? Number(rawVal) : parseFloat(ethers.formatUnits(rawVal, 6));
             const formatted = `${valNum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mUSDC`;
             setSandboxState((prev) => ({
               ...prev,
@@ -1260,7 +1262,7 @@ export default function RealVaultApp() {
               <div className="text-sm font-bold font-mono text-indigo-600 truncate py-0.5">
                 {dashboardState.navHandle
                   ? `${dashboardState.navHandle.slice(0, 10)}...${dashboardState.navHandle.slice(-6)}`
-                  : "—"
+                  : "-"
                 }
               </div>
               <span className="text-xs font-mono text-zinc-400 block truncate">
@@ -1295,7 +1297,7 @@ export default function RealVaultApp() {
                 <div className="text-2xl font-bold font-data text-zinc-900 mt-1">
                   {dashboardState.lastUpdateBlock > 0
                     ? `#${dashboardState.lastUpdateBlock.toLocaleString()}`
-                    : "—"
+                    : "-"
                   }
                 </div>
                 <span className="text-xs font-mono text-zinc-400 block mt-0.5">
@@ -1347,7 +1349,7 @@ export default function RealVaultApp() {
             </div>
           )}
 
-          {/* LP Ledger Table — On-chain investor list */}
+          {/* LP Ledger Table - On-chain investor list */}
           <div className="vault-card overflow-hidden gsap-slide-up">
             <div className="p-5 pb-3 border-b border-zinc-200">
               <h3 className="text-base font-bold text-zinc-900">
@@ -1897,49 +1899,79 @@ export default function RealVaultApp() {
               </div>
             </div>
 
-            {/* Rebalance Status (Interactive Execution Engine) */}
-            <div className="vault-card p-8 space-y-5 flex flex-col justify-between">
+            {/* Rebalance Status (Interactive Execution Engine - Optimized Layout) */}
+            <div className="vault-card p-6 space-y-4 flex flex-col justify-between bg-white border-zinc-200">
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold text-zinc-900">Rebalance Execution History</span>
-                  <span className="badge-fhe">On-Chain State</span>
+                <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-sm font-bold text-zinc-900 font-mono">Confidential Rebalance Engine</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    iExec TEE Enclave
+                  </span>
                 </div>
-                <p className="text-sm text-zinc-500 leading-relaxed">
-                  Rebalance operations execute encrypted handle operations (<code className="text-indigo-600 bg-indigo-50 px-1 rounded font-mono text-xs">Nox.sub</code> / <code className="text-indigo-600 bg-indigo-50 px-1 rounded font-mono text-xs">Nox.add</code>) inside iExec Nox TEE enclaves to adjust asset sleeve balances without exposing trade sizes to MEV bots.
+
+                <p className="text-xs text-zinc-600 leading-relaxed font-sans">
+                  Adjusts asset sleeve balances via encrypted handle math (<code className="text-indigo-700 bg-indigo-50 px-1 rounded font-mono text-[11px]">Nox.sub</code> / <code className="text-indigo-700 bg-indigo-50 px-1 rounded font-mono text-[11px]">Nox.add</code>) inside TEE enclaves to prevent MEV front-running.
                 </p>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200">
-                    <span className="text-[10px] font-mono text-zinc-400 uppercase block">Executions</span>
-                    <span className="text-lg font-bold font-data text-zinc-900">{rebalanceState.rebalanceCount}</span>
+                {/* Compact On-Chain State Metrics */}
+                <div className="grid grid-cols-3 gap-2 font-mono text-xs">
+                  <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-center">
+                    <span className="text-[9px] text-zinc-400 font-bold uppercase block">Executions</span>
+                    <span className="text-base font-extrabold text-zinc-900">{rebalanceState.rebalanceCount}</span>
                   </div>
-                  <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200">
-                    <span className="text-[10px] font-mono text-zinc-400 uppercase block">Last Block</span>
-                    <span className="text-lg font-bold font-data text-zinc-900">
-                      {rebalanceState.lastBlock > 0 ? `#${rebalanceState.lastBlock.toLocaleString()}` : "—"}
+                  <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-center col-span-2">
+                    <span className="text-[9px] text-zinc-400 font-bold uppercase block">Last Settled Block</span>
+                    <span className="text-base font-extrabold text-indigo-700">
+                      {rebalanceState.lastBlock > 0 ? `#${rebalanceState.lastBlock.toLocaleString()}` : "-"}
                     </span>
+                  </div>
+                </div>
+
+                {/* Cryptographic Execution Pipeline Visualizer */}
+                <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 font-mono text-[10px] text-indigo-900 space-y-1.5">
+                  <div className="flex justify-between items-center font-bold text-[9px] text-indigo-950">
+                    <span>EXECUTION PIPELINE</span>
+                    <span className="text-emerald-700">ZERO MEV LEAKAGE</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 text-center font-sans text-[10px]">
+                    <div className="bg-white p-1 rounded border border-indigo-100/80 font-mono">
+                      <span className="block font-bold text-zinc-800">1. Delta</span>
+                      <span className="text-[9px] text-zinc-400">Handle Encrypted</span>
+                    </div>
+                    <div className="bg-white p-1 rounded border border-indigo-100/80 font-mono">
+                      <span className="block font-bold text-zinc-800">2. Enclave</span>
+                      <span className="text-[9px] text-zinc-400">TEE Nox Math</span>
+                    </div>
+                    <div className="bg-white p-1 rounded border border-indigo-100/80 font-mono">
+                      <span className="block font-bold text-zinc-800">3. Settle</span>
+                      <span className="text-[9px] text-zinc-400">On-Chain State</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2">
+              {/* Action Button & Sleek Notification Output */}
+              <div className="space-y-2.5 pt-1">
                 <button
                   onClick={handleExecuteRebalance}
                   disabled={isExecutingRebalance}
-                  className="btn-secondary w-full text-xs py-3 font-mono border-indigo-300 text-indigo-900 hover:bg-indigo-50 flex items-center justify-center gap-2"
+                  className="w-full py-3 px-4 rounded-xl text-xs font-mono font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isExecutingRebalance ? (
                     <>
-                      <svg className="animate-spin h-3.5 w-3.5 text-indigo-600" viewBox="0 0 24 24" fill="none">
+                      <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      <span>Encrypting Delta via Nox TEE...</span>
+                      <span>Encrypting Delta via Nox TEE Gateway...</span>
                     </>
                   ) : (
                     <>
-                      <svg className="w-4 h-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      <svg className="w-4 h-4 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                       <span>Execute Confidential Rebalance</span>
                     </>
@@ -1947,12 +1979,13 @@ export default function RealVaultApp() {
                 </button>
 
                 {rebalanceExecMsg ? (
-                  <div className="p-3 rounded-lg bg-indigo-50 border border-indigo-200 text-xs font-mono text-indigo-900 leading-relaxed">
-                    {rebalanceExecMsg}
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-950 flex items-start gap-2 leading-relaxed">
+                    <span className="text-base leading-none">🎉</span>
+                    <span className="flex-1 break-all">{rebalanceExecMsg}</span>
                   </div>
                 ) : (
-                  <div className="p-2.5 rounded-lg bg-zinc-50 border border-zinc-200 text-[11px] text-zinc-500 font-mono text-center">
-                    On-chain TEE operation via RebalancerAgent.sol · Rebalance execution requires Nox encrypted handles per wallet
+                  <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 text-[10px] text-zinc-500 font-mono text-center">
+                    RebalancerAgent.sol · Requires Nox encrypted handles per wallet
                   </div>
                 )}
               </div>
@@ -1969,29 +2002,43 @@ export default function RealVaultApp() {
               Proofs &amp; Verification
             </h2>
             <p className="text-sm text-zinc-500 mt-1.5">
-              6 smart contracts deployed and verified on Ethereum Sepolia (Chain ID 11155111).
+              {Object.keys(DEPLOYED_ADDRESSES.contracts).length} smart contracts deployed and verified on Ethereum Sepolia (Chain ID 11155111).
             </p>
           </div>
 
           {/* Verified Contracts Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 gsap-slide-up">
-            {Object.entries(DEPLOYED_ADDRESSES.contracts).map(([name, addr]) => (
-              <a
-                key={name}
-                href={`https://sepolia.etherscan.io/address/${addr}#code`}
-                target="_blank"
-                rel="noreferrer"
-                className="vault-card vault-card-hover p-5 space-y-2 block"
-              >
-                <div className="flex items-center justify-between text-sm font-semibold text-zinc-900">
-                  <span>{name}</span>
-                  <span className="text-zinc-300 text-xs">↗</span>
-                </div>
-                <div className="font-mono text-xs text-indigo-600">
-                  {addr.slice(0, 10)}...{addr.slice(-6)}
-                </div>
-              </a>
-            ))}
+            {Object.entries(DEPLOYED_ADDRESSES.contracts).map(([name, addr], idx, arr) => {
+              const isLast = idx === arr.length - 1;
+              return (
+                <a
+                  key={name}
+                  href={`https://sepolia.etherscan.io/address/${addr}#code`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`vault-card vault-card-hover p-5 space-y-2 block transition-all ${
+                    isLast
+                      ? "sm:col-span-2 md:col-span-3 bg-gradient-to-r from-indigo-50/80 via-white to-indigo-50/40 border-indigo-200"
+                      : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-sm font-semibold text-zinc-900">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{name}</span>
+                      {name === "SafeMultisig" && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold">
+                          2-of-3 Gnosis Safe Multisig Governance
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-zinc-400 text-xs font-mono font-semibold">Verify ↗</span>
+                  </div>
+                  <div className="font-mono text-xs text-indigo-600 font-bold break-all">
+                    {isLast ? addr : `${addr.slice(0, 10)}...${addr.slice(-6)}`}
+                  </div>
+                </a>
+              );
+            })}
           </div>
 
           {/* FHE Handle & Ciphertext Inspector */}

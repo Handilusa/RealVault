@@ -21,7 +21,7 @@ interface IDisclosureManager {
     function getAuthorizedAuditors(address investor) external view returns (address[] memory);
 }
 
-/// @title RwaPerpEngine — Confidential RWA Perpetual Engine
+/// @title RwaPerpEngine - Confidential RWA Perpetual Engine
 /// @notice Manages synthetic perpetual positions on RWA assets with full privacy via iExec Nox FHE
 /// @dev Phase 3 implementation with complete FHE integration, safe arithmetic, loss capping, and per-user ACLs
 /// @custom:security CRITICAL PATTERNS:

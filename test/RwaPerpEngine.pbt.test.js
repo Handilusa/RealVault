@@ -6,7 +6,7 @@ const fc = require("fast-check");
 // Property-Based Testing: Position Lifecycle Accounting Invariants
 // Properties 15, 16, and 17 using fast-check framework
 
-describe("RwaPerpEngine — Property-Based Testing (fast-check)", function () {
+describe("RwaPerpEngine - Property-Based Testing (fast-check)", function () {
     let rwaPerpEngine;
     let fundVault;
     let mockUSDC;

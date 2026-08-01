@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { Web3Provider } from "@/components/Web3Provider";
+import PageTransition from "@/components/PageTransition";
 
 const fraunces = Fraunces({
   variable: "--font-display",
@@ -38,10 +39,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${fraunces.variable} ${ibmPlexSans.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <Web3Provider>{children}</Web3Provider>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <Web3Provider>
+          <PageTransition>{children}</PageTransition>
+        </Web3Provider>
       </body>
     </html>
   );

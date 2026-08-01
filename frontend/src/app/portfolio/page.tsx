@@ -9,8 +9,38 @@ import {
   FUND_VAULT_ABI,
   MOCK_USDC_ABI,
   DISCLOSURE_MANAGER_ABI,
+  RWA_PERP_ENGINE_ABI,
 } from "@/lib/contracts";
 import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider, parseWeb3Error } from "@/lib/web3";
+import { formatCompact } from "@/lib/format";
+
+export interface PnlMetrics {
+  totalNetEquity: number;
+  unrealizedPnl: number;
+  pnlPercent: number;
+  isPositive: boolean;
+  formattedPnl: string;
+}
+
+export function computeUnrealizedPnl(
+  decryptedFundVaultBalance: number | null,
+  grossCollateral: number,
+  activeMargin: number = 0
+): PnlMetrics | null {
+  if (decryptedFundVaultBalance === null || grossCollateral <= 0) return null;
+  const totalNetEquity = decryptedFundVaultBalance + activeMargin;
+  const pnl = totalNetEquity - grossCollateral;
+  const percent = (pnl / grossCollateral) * 100;
+  const isPositive = pnl >= 0;
+  const formattedPnl = `${isPositive ? "+" : ""}${pnl.toFixed(2)} mUSDC (${isPositive ? "+" : ""}${percent.toFixed(2)}%)`;
+  return {
+    totalNetEquity,
+    unrealizedPnl: pnl,
+    pnlPercent: percent,
+    isPositive,
+    formattedPnl,
+  };
+}
 
 export default function PersonalPortfolioPage() {
   const { address: account } = useAccount();
@@ -31,6 +61,8 @@ export default function PersonalPortfolioPage() {
   // Decryption State & Session Position Tracking
   const [isRevealed, setIsRevealed] = useState<boolean>(false);
   const [decryptedValue, setDecryptedValue] = useState<string | null>(null);
+  const [decryptedNumeric, setDecryptedNumeric] = useState<number | null>(null);
+  const [activeLockedMargin, setActiveLockedMargin] = useState<number>(0);
   const [sessionPositionAmount, setSessionPositionAmount] = useState<number | null>(null);
 
   // Fetch balances and state from Sepolia
@@ -42,18 +74,38 @@ export default function PersonalPortfolioPage() {
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, provider);
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, provider);
       const manager = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.DisclosureManager, DISCLOSURE_MANAGER_ABI, provider);
+      const engine = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RwaPerpEngine, RWA_PERP_ENGINE_ABI, provider);
 
-      const [bal, posHandle, vaultBal, activeAuditor] = await Promise.all([
+      const [bal, posHandle, vaultBal, activeAuditor, rawPositions] = await Promise.all([
         usdc.balanceOf(account).catch(() => 0n),
         vault.getPosition(account).catch(() => null),
         usdc.balanceOf(DEPLOYED_ADDRESSES.contracts.FundVault).catch(() => 0n),
         manager.isActiveAuditorFor(account, account).catch(() => false),
+        engine.getPositions(account).catch(() => []),
       ]);
 
       setWalletBalance(ethers.formatUnits(bal, 18));
       const vaultFormatted = ethers.formatUnits(vaultBal, 18);
       setVaultUsdcBalance(vaultFormatted);
       setIsAuditorApproved(activeAuditor as boolean);
+
+      // Load active position margins dictionary from localStorage
+      let savedMargins: Record<number, number> = {};
+      try {
+        const raw = localStorage.getItem(`realvault_position_margins_${account}`);
+        if (raw) savedMargins = JSON.parse(raw);
+      } catch {}
+
+      let openMarginTotal = 0;
+      if (Array.isArray(rawPositions)) {
+        rawPositions.forEach((pos: any, idx: number) => {
+          if (pos.isOpen) {
+            const m = savedMargins[idx] ?? 20;
+            openMarginTotal += m;
+          }
+        });
+      }
+      setActiveLockedMargin(openMarginTotal);
 
       // Sync session position tracker with actual on-chain vault balance
       setSessionPositionAmount(parseFloat(vaultFormatted));
@@ -137,11 +189,11 @@ export default function PersonalPortfolioPage() {
       // 2. Encrypt handle & proof via Nox SDK
       setStatusMsg("Encrypting deposit via Nox TEE Gateway...");
       const { createEthersHandleClient } = await import("@iexec-nox/handle");
-      const handleClient = await createEthersHandleClient(provider);
+      const handleClient = await createEthersHandleClient(signer);
 
-      const depositBigInt = BigInt(depositAmount);
+      const depositE6 = ethers.parseUnits(depositAmount, 6);
       const { handle, handleProof } = await handleClient.encryptInput(
-        depositBigInt,
+        BigInt(depositE6),
         "uint256",
         DEPLOYED_ADDRESSES.contracts.FundVault as `0x${string}`
       );
@@ -185,9 +237,9 @@ export default function PersonalPortfolioPage() {
       const { createEthersHandleClient } = await import("@iexec-nox/handle");
       const handleClient = await createEthersHandleClient(provider);
 
-      const withdrawBigInt = BigInt(withdrawAmount);
+      const withdrawE6 = ethers.parseUnits(withdrawAmount, 6);
       const { handle, handleProof } = await handleClient.encryptInput(
-        withdrawBigInt,
+        BigInt(withdrawE6),
         "uint256",
         DEPLOYED_ADDRESSES.contracts.FundVault as `0x${string}`
       );
@@ -219,6 +271,7 @@ export default function PersonalPortfolioPage() {
     if (isRevealed) {
       setIsRevealed(false);
       setDecryptedValue(null);
+      setDecryptedNumeric(null);
       return;
     }
 
@@ -231,8 +284,11 @@ export default function PersonalPortfolioPage() {
 
       const decrypted = await handleClient.decrypt(positionHandle as `0x${string}`).catch(() => null);
       if (decrypted && decrypted.value !== undefined) {
-        const amt = parseFloat(decrypted.value.toString());
+        const rawVal = BigInt(decrypted.value.toString());
+        // Backward compatibility: support both old raw integer handles (< 10000) and 6-decimal handles
+        const amt = rawVal < 10000n && rawVal > 0n ? Number(rawVal) : parseFloat(ethers.formatUnits(rawVal, 6));
         setIsRevealed(true);
+        setDecryptedNumeric(amt);
         setDecryptedValue(`${amt.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mUSDC`);
         return;
       }
@@ -244,13 +300,19 @@ export default function PersonalPortfolioPage() {
     // Fallback: use the actual on-chain vault balance as best approximation
     const vaultAmt = parseFloat(vaultUsdcBalance);
     if (vaultAmt > 0) {
+      setDecryptedNumeric(vaultAmt);
       setDecryptedValue(`${vaultAmt.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mUSDC`);
     } else if (sessionPositionAmount !== null && sessionPositionAmount > 0) {
+      setDecryptedNumeric(sessionPositionAmount);
       setDecryptedValue(`${sessionPositionAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mUSDC`);
     } else {
+      setDecryptedNumeric(null);
       setDecryptedValue("Position Handle Confirmed (Nox euint256)");
     }
   };
+
+  const grossCollateralNum = parseFloat(vaultUsdcBalance);
+  const pnlMetrics = computeUnrealizedPnl(decryptedNumeric, grossCollateralNum, activeLockedMargin);
 
   return (
     <main className="min-h-screen bg-[#FAFAFA] text-zinc-900 font-sans selection:bg-indigo-100 selection:text-indigo-900">
@@ -265,7 +327,7 @@ export default function PersonalPortfolioPage() {
               Sovereign Position Account · TEE Protected
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-zinc-900">
-              Sovereign Portfolio & Position Manager
+              Sovereign Portfolio &amp; Position Manager
             </h1>
             <p className="text-zinc-500 text-sm mt-1 max-w-2xl">
               Manage encrypted positions and deposit/withdraw liquidity on-chain powered by iExec Nox TEE enclaves.
@@ -315,51 +377,76 @@ export default function PersonalPortfolioPage() {
           <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-white border-zinc-200">
             <div className="flex justify-between items-center text-xs text-zinc-500 font-mono">
               <span>Public Wallet Balance</span>
-              <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-600">ERC-20</span>
+              <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 font-semibold">ERC-20</span>
             </div>
             <div className="text-3xl font-extrabold text-zinc-900 font-mono">
-              {parseFloat(walletBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {formatCompact(parseFloat(walletBalance))}
               <span className="text-sm font-normal text-zinc-500 ml-2">mUSDC</span>
             </div>
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-[11px] text-zinc-500 leading-relaxed">
               Publicly visible balance on Etherscan in your connected Web3 wallet.
             </p>
           </div>
 
-          {/* Card 2: Confidential Encrypted Position (FHE) */}
-          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-white border-emerald-200">
-            <div className="flex justify-between items-center text-xs text-emerald-700 font-mono">
-              <span className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          {/* Card 2: Sovereign Encrypted Position (TEE - Primary Net Equity) */}
+          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-white border-emerald-300 ring-1 ring-emerald-100 shadow-sm">
+            <div className="flex justify-between items-center text-xs text-emerald-800 font-mono">
+              <span className="flex items-center gap-1.5 font-bold">
+                <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
-                Encrypted Position Handle
+                Encrypted Position (TEE)
               </span>
-              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">FHE euint256</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold text-[11px]">Primary Net Equity</span>
             </div>
 
-            <div className="flex items-baseline justify-between">
-              <div className="text-2xl font-extrabold text-zinc-900 font-mono tracking-tight">
-                {isRevealed ? (
-                  <span className="text-emerald-700 text-sm">{decryptedValue}</span>
+            <div className="space-y-1.5">
+              <div className="text-2xl sm:text-3xl font-extrabold text-zinc-900 font-mono tracking-tight">
+                {isRevealed && pnlMetrics ? (
+                  <span className="text-emerald-700 font-mono">{pnlMetrics.totalNetEquity.toFixed(2)} mUSDC</span>
+                ) : isRevealed && decryptedValue ? (
+                  <span className="text-emerald-700 font-mono">{decryptedValue}</span>
                 ) : positionHandle ? (
-                  <span className="text-indigo-600 text-lg font-mono" title={positionHandle}>
+                  <span className="text-indigo-600 text-base font-mono" title={positionHandle}>
                     {positionHandle.substring(0, 14)}...{positionHandle.substring(positionHandle.length - 8)}
                   </span>
                 ) : (
                   <span className="text-zinc-400 text-lg">No Active Position</span>
                 )}
               </div>
+
+              {/* Hierarchical Line 2: Net PnL (Settled) */}
+              {isRevealed && pnlMetrics ? (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 font-mono text-xs pt-0.5">
+                    <span className="text-zinc-500 font-sans">Net PnL (Settled):</span>
+                    <span className={`font-bold ${pnlMetrics.isPositive ? "text-emerald-600" : "text-rose-600"}`}>
+                      {pnlMetrics.formattedPnl}
+                    </span>
+                  </div>
+                  {activeLockedMargin > 0 && decryptedNumeric !== null && (
+                    <div className="text-[10.5px] font-mono text-zinc-500 pt-0.5 flex flex-wrap items-center gap-1.5 leading-tight">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                      <span>Vault: {decryptedNumeric.toFixed(2)} mUSDC</span>
+                      <span>+ Active Margin: {activeLockedMargin.toFixed(2)} mUSDC</span>
+                    </div>
+                  )}
+                </div>
+              ) : positionHandle ? (
+                <div className="text-[11px] font-mono text-zinc-400">
+                  Net PnL: <span className="text-zinc-500 italic">Encrypted in TEE Ciphertext</span>
+                </div>
+              ) : null}
             </div>
 
-            <div className="flex justify-between items-center pt-2">
+            <div className="flex justify-between items-center pt-2 border-t border-emerald-100/60">
               <span className="text-[11px] font-mono text-zinc-500">
-                {positionHandle ? "Protected by iExec Nox Enclave" : "Make your first encrypted deposit"}
+                {positionHandle ? "Protected by iExec Nox Enclave" : "Make an encrypted deposit"}
               </span>
               {positionHandle && (
                 <button
                   onClick={handleToggleReveal}
-                  className="text-xs font-mono text-emerald-700 hover:text-emerald-800 underline"
+                  className="text-xs font-mono text-emerald-700 hover:text-emerald-800 font-semibold underline underline-offset-2"
                 >
                   {isRevealed ? "Hide Status" : "Verify Status"}
                 </button>
@@ -367,18 +454,31 @@ export default function PersonalPortfolioPage() {
             </div>
           </div>
 
-          {/* Card 3: Vault Treasury Lock */}
-          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-white border-indigo-200">
-            <div className="flex justify-between items-center text-xs text-indigo-700 font-mono">
-              <span>FundVault Contract Balance</span>
-              <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">Public Contract</span>
+          {/* Card 3: Vault Gross Collateral (Public Custody Proof) */}
+          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-white border-zinc-200">
+            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono">
+              <span className="font-semibold text-zinc-700">Vault Gross Collateral (ERC-20)</span>
+              <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-500 text-[10px]">Public Contract</span>
             </div>
-            <div className="text-3xl font-extrabold text-zinc-900 font-mono">
-              {parseFloat(vaultUsdcBalance).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-              <span className="text-sm font-normal text-indigo-600 ml-2">mUSDC</span>
+            <div className="text-3xl font-extrabold text-zinc-600 font-mono">
+              {formatCompact(parseFloat(vaultUsdcBalance))}
+              <span className="text-sm font-normal text-zinc-400 ml-2">mUSDC</span>
             </div>
-            <p className="text-[11px] text-zinc-500">
-              Total collateral custodied in the Sepolia Smart Contract.
+            <p className="text-[11px] text-zinc-500 leading-relaxed">
+              Physical ERC-20 collateral held in Sepolia contract. Does not reflect unrealized PnL until settlement.
+            </p>
+          </div>
+        </div>
+
+        {/* Architecture Context Banner */}
+        <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs font-mono text-indigo-900 flex items-start gap-3 shadow-xs">
+          <svg className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div className="space-y-0.5">
+            <span className="font-bold text-indigo-950 block">Architecture Guarantee &amp; Balance Hierarchy:</span>
+            <p className="text-indigo-800/90 text-[12px] font-sans leading-relaxed">
+              Your encrypted balance already reflects trading PnL. The Vault Gross Collateral only changes on deposit/withdraw - it&apos;s the public custody proof, not your spendable balance.
             </p>
           </div>
         </div>
