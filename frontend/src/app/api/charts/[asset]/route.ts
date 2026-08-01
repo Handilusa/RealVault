@@ -118,9 +118,9 @@ function seededRandom(seed: number): () => number {
 }
 
 /**
- * Generates historical baseline chart points using clean, deterministic linear interpolation
- * backwards from the REAL live oracle price anchor to the historical baseline.
- * Avoids stochastic price generation (no Brownian motion or random walk).
+ * Generates historical baseline chart points using deterministic Geometric Brownian Motion
+ * seeded by the asset key and current day. Produces realistic market-like noise scaled to
+ * each asset's annualVolatility, while still anchoring start→end to the real oracle price.
  */
 function generateHistoricalSeed(
   assetKey: string,
@@ -150,12 +150,43 @@ function generateHistoricalSeed(
   const rangeYears = rangeMs / (365.25 * 24 * 3600_000);
   const startPrice = currentPrice / (1 + annualDrift * rangeYears);
   const startTime = nowMs - rangeMs;
+
+  // Deterministic seed: hash of assetKey + day boundary so chart is stable within a day
+  const dayBoundary = Math.floor(nowMs / 86400_000);
+  let seedNum = dayBoundary;
+  for (let c = 0; c < assetKey.length; c++) seedNum = (seedNum * 31 + assetKey.charCodeAt(c)) | 0;
+  const rng = seededRandom(seedNum);
+
+  // Box-Muller transform for Gaussian noise from uniform [0,1) pairs
+  const gaussianNoise = (): number => {
+    const u1 = Math.max(1e-10, rng()); // avoid log(0)
+    const u2 = rng();
+    return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+  };
+
+  // Step volatility scaled from annual volatility
+  const stepsPerYear = (365.25 * 24 * 3600_000) / stepMs;
+  const stepVol = config.annualVolatility / Math.sqrt(stepsPerYear);
+
+  // 1) Generate raw GBM path forward from startPrice
+  const rawPrices: number[] = [startPrice];
+  for (let i = 1; i <= numSteps; i++) {
+    const prev = rawPrices[i - 1];
+    const drift = annualDrift / stepsPerYear;
+    const shock = stepVol * gaussianNoise();
+    rawPrices.push(prev * (1 + drift + shock));
+  }
+
+  // 2) Bridge-correct so the path ends exactly at currentPrice
+  //    Apply linear scaling: correctedPrice[i] = rawPrice[i] * (1 + i/N * (targetRatio - 1))
+  const rawEnd = rawPrices[numSteps];
+  const targetRatio = currentPrice / rawEnd;
   const points: ChartPoint[] = [];
 
-  // Deterministic linear interpolation between startPrice and currentPrice
   for (let i = 0; i <= numSteps; i++) {
-    const fraction = i / numSteps;
-    const price = startPrice + fraction * (currentPrice - startPrice);
+    const blend = i / numSteps;
+    const correctionFactor = 1 + blend * (targetRatio - 1);
+    const price = rawPrices[i] * correctionFactor;
     const t = startTime + i * stepMs;
     points.push({
       t: Math.min(t, nowMs),
