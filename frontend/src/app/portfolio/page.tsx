@@ -13,6 +13,8 @@ import {
 } from "@/lib/contracts";
 import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider, parseWeb3Error } from "@/lib/web3";
 import { formatCompact } from "@/lib/format";
+import AuditorAccessPanel from "@/components/AuditorAccessPanel";
+import AutomatedYieldStrategyWidget from "@/components/AutomatedYieldStrategyWidget";
 
 export interface PnlMetrics {
   totalNetEquity: number;
@@ -593,6 +595,12 @@ export default function PersonalPortfolioPage() {
             </div>
           </div>
         </div>
+
+        {/* Automated Yield Strategy Widget */}
+        <AutomatedYieldStrategyWidget />
+
+        {/* Compliance & Auditor Access Control Panel */}
+        <AuditorAccessPanel />
       </div>
     </main>
   );

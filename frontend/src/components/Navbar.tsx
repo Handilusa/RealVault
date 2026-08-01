@@ -10,7 +10,6 @@ const navItems = [
   { label: "Home", href: "/" },
   { label: "Shadow Wallet", href: "/portfolio" },
   { label: "Confidential Trading", href: "/investor" },
-  { label: "Auditor Registry", href: "/auditor" },
 ];
 
 export default function Navbar() {
@@ -184,11 +183,11 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-zinc-200 px-4 sm:px-6 lg:px-10">
-      <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4 h-16">
+      <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4 h-16 relative">
         {/* Brand with GSAP Pro Micro-Animations */}
         <Link
           href="/"
-          className="flex items-center gap-3 group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded-xl p-1 -m-1 transition-all"
+          className="flex items-center gap-3 group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded-xl p-1 -m-1 transition-all z-10"
           onMouseEnter={handleBrandHoverEnter}
           onMouseLeave={handleBrandHoverLeave}
           onFocus={handleBrandHoverEnter}
@@ -210,8 +209,8 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Nav Links with sliding indicator */}
-        <nav ref={navRef} className="relative flex items-center gap-1.5 sm:gap-2 text-xs font-mono">
+        {/* Nav Links - Dead Center Aligned */}
+        <nav ref={navRef} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 sm:gap-2 text-xs font-mono z-10">
           {/* Sliding indicator pill */}
           <div
             ref={indicatorRef}
@@ -244,7 +243,7 @@ export default function Navbar() {
         </nav>
 
         {/* Right: Network Status + Wallet */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 z-10">
           <div 
             className="hidden sm:flex items-center gap-2 text-[11px] font-mono px-3 py-1.5 rounded-xl bg-white text-zinc-900 border border-zinc-200 shadow-2xs hover:border-indigo-300 hover:bg-indigo-50/30 transition-all duration-300 group cursor-default"
             title="Active Network: Ethereum Sepolia (Chain ID: 11155111)"

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import gsap from "gsap";
 import { useOracleChart } from "@/lib/hooks/useOracleChart";
 import { formatOracleDisplay } from "@/lib/format";
+import { DEPLOYED_ADDRESSES } from "@/lib/contracts";
 import { Lock, ShieldCheck, Clock, Info, ExternalLink, X, Database, CheckCircle2, Activity } from "lucide-react";
 
 export interface TradingViewChartProps {
@@ -445,10 +446,30 @@ const OracleInspectorModal: React.FC<OracleInspectorModalProps> = ({
       .to(backdropRef.current, { autoAlpha: 0, duration: 0.2 }, "-=0.1");
   }, [onClose]);
 
-  const etherscanHref =
+  const contractInfo =
     assetKey === "RGOLD"
-      ? "https://sepolia.etherscan.io/address/0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea#readContract"
-      : "https://sepolia.etherscan.io/address/0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5#readContract";
+      ? {
+          name: "Chainlink XAU/USD Oracle",
+          interfaceName: "ChainlinkRwaOracleAdapter",
+          address: "0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea",
+          description: "Real-time Chainlink XAU/USD gold oracle feed with 1-hour heartbeat updates on Ethereum Sepolia.",
+          etherscan: "https://sepolia.etherscan.io/address/0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea#readContract",
+        }
+      : assetKey === "RUSTB"
+      ? {
+          name: "SignedNavOracleAdapter (rUSTB)",
+          interfaceName: "US Treasury Daily NAV Adapter",
+          address: DEPLOYED_ADDRESSES.contracts.SignedNavOracle,
+          description: "Daily US Treasury T-Bills NAV oracle adapter updated on-chain from official US Treasury FiscalData API daily settlement.",
+          etherscan: `https://sepolia.etherscan.io/address/${DEPLOYED_ADDRESSES.contracts.SignedNavOracle}#readContract`,
+        }
+      : {
+          name: "SignedNavOracleAdapter (rCRE)",
+          interfaceName: "Commercial Real Estate Weekly NAV Adapter",
+          address: DEPLOYED_ADDRESSES.contracts.SignedNavOracle,
+          description: "Weekly Commercial Real Estate index NAV oracle adapter with 7-day settlement cadence on Ethereum Sepolia.",
+          etherscan: `https://sepolia.etherscan.io/address/${DEPLOYED_ADDRESSES.contracts.SignedNavOracle}#readContract`,
+        };
 
   return (
     <div
@@ -474,12 +495,12 @@ const OracleInspectorModal: React.FC<OracleInspectorModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-base text-indigo-950 flex items-center gap-2">
-                <span>{assetKey === "RGOLD" ? "Chainlink XAU/USD" : themeName}</span>
+                <span>{contractInfo.name}</span>
                 <span className="text-[10px] font-mono bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-200">
                   ON-CHAIN FEED
                 </span>
               </h3>
-              <p className="text-xs text-indigo-400 font-sans">Ethereum Sepolia Testnet · AggregatorV3Interface</p>
+              <p className="text-xs text-indigo-400 font-sans">Ethereum Sepolia Testnet · {contractInfo.interfaceName}</p>
             </div>
           </div>
           <button
@@ -517,10 +538,18 @@ const OracleInspectorModal: React.FC<OracleInspectorModalProps> = ({
               <span>Direct Contract Verification (No Off-Chain Manipulation)</span>
             </div>
             <p className="text-[11px] text-emerald-800/90 leading-relaxed font-mono">
-              Contract: <code className="bg-emerald-100 text-emerald-900 px-1 py-0.5 rounded font-bold">0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea</code>
+              Contract:{" "}
+              <a
+                href={contractInfo.etherscan}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-bold underline transition-colors"
+              >
+                {contractInfo.address}
+              </a>
             </p>
             <p className="text-[11px] text-emerald-800/90 leading-relaxed">
-              Prices are stored in fixed-point integers (<code className="bg-emerald-100 text-emerald-900 px-1 py-0.5 rounded font-mono text-[10px]">uint128</code> with 8 decimals) and queried directly by RwaPerpEngine smart contracts.
+              {contractInfo.description} Prices are stored as fixed-point integers (<code className="bg-emerald-100 text-emerald-900 px-1 py-0.5 rounded font-mono text-[10px]">uint128</code> with 8 decimals) and queried directly by RwaPerpEngine smart contracts.
             </p>
           </div>
 
@@ -571,7 +600,7 @@ const OracleInspectorModal: React.FC<OracleInspectorModalProps> = ({
         {/* Modal Footer — White/Indigo */}
         <div ref={footerRef} className="bg-indigo-50/40 p-4 border-t border-indigo-100 flex items-center justify-between font-sans" style={{ visibility: "hidden" }}>
           <a
-            href={etherscanHref}
+            href={contractInfo.etherscan}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-800 hover:underline font-mono"
