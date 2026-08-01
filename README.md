@@ -331,36 +331,112 @@ All 8-decimal oracle values (`priceE8 / 1e8`) pass through shared utility functi
 
 ```
 iXEC/
-├── contracts/                  # Smart Contracts (Hardhat / Solidity 0.8.35)
-│   ├── FundVault.sol           # Confidential Vault managing ERC-7984 LP positions
-│   ├── RwaPerpEngine.sol       # Leveraged perpetual engine with encrypted margin & PnL
-│   ├── RwaPerpMath.sol         # Pure PnL calculation library (1e8 fixed-point)
-│   ├── RwaPerpTypes.sol        # Position & AssetConfig struct definitions
-│   ├── NAVAggregator.sol       # Homomorphic NAV summation engine
-│   ├── DisclosureManager.sol   # Scoped ACL & Handle Rotation revocation manager
-│   ├── RebalancerAgent.sol     # Sovereign per-user allocation policy controller
-│   ├── ChainlinkRwaOracleAdapter.sol  # Chainlink XAU/USD oracle wrapper
-│   ├── SignedNavOracleAdapter.sol      # Signed NAV oracle for rUSTB & rCRE
-│   └── MockUSDC.sol            # Testnet collateral token
-├── frontend/                   # Single-Page dApp (Next.js / Tailwind CSS / Ethers v6)
-│   ├── src/app/globals.css     # Institutional light zinc design system
-│   ├── src/app/page.tsx        # Main dApp Dashboard & Interactive Demo
-│   ├── src/app/portfolio/page.tsx  # Shadow Wallet: balances, PnL, yield strategy
-│   ├── src/app/investor/page.tsx   # Confidential Trading: charts, positions, margin
-│   ├── src/app/api/charts/[asset]/route.ts  # REST API: live oracle price + GBM seed history
-│   ├── src/components/         # OnChainEventFeed, FheHandleInspector, GasChart, Tooltip, etc.
-│   ├── src/components/charts/  # TradingViewChart, SparklineChart (SVG oracle visualizations)
-│   ├── src/components/AutomatedYieldStrategyWidget.tsx  # Sovereign yield policy & APY engine
-│   ├── src/components/AuditorAccessPanel.tsx  # Privacy compliance & auditor access control
-│   ├── src/lib/hooks/useOracleChart.ts  # Custom React hook for oracle chart data & polling
-│   ├── src/lib/format.ts       # Shared oracle value formatting
-│   └── src/lib/marketData.ts   # Live US Treasury FiscalData API integration
-├── scripts/                    # Deployment & benchmark scripts
-├── deployments/                # Deployed contract addresses (sepolia.json)
-├── benchmarks/                 # Empirical gas benchmark measurements JSON
-├── feedback.md                 # Developer DX Feedback Report for iExec Team
-├── README.md                   # Project overview & architectural thesis
-└── hardhat.config.js           # Sepolia network configuration
+├── contracts/                          # Smart Contracts (Hardhat / Solidity 0.8.35)
+│   ├── FundVault.sol                   # Confidential Vault — ERC-7984 encrypted LP positions
+│   ├── RwaPerpEngine.sol               # Leveraged perpetual engine — encrypted margin & PnL
+│   ├── RwaPerpMath.sol                 # Pure PnL calculation library (1e8 fixed-point)
+│   ├── RwaPerpTypes.sol                # Position & AssetConfig struct definitions
+│   ├── NAVAggregator.sol               # Homomorphic NAV summation engine
+│   ├── DisclosureManager.sol           # Scoped ACL & Handle Rotation revocation
+│   ├── RebalancerAgent.sol             # Sovereign per-user allocation policy controller
+│   ├── WrappedUSDC.sol                 # ERC-7984 confidential wrapped USDC
+│   ├── MockUSDC.sol                    # Testnet collateral token (6 decimals)
+│   ├── interfaces/
+│   │   └── IRwaPriceOracle.sol         # Oracle adapter interface (latestPrice)
+│   ├── oracles/
+│   │   ├── ChainlinkRwaOracleAdapter.sol   # Chainlink XAU/USD wrapper (rGOLD)
+│   │   └── SignedNavOracleAdapter.sol       # Signed NAV oracle (rUSTB & rCRE)
+│   ├── mocks/
+│   │   └── MockChainlinkAggregator.sol     # Test mock for Chainlink feed
+│   └── test-helpers/
+│       ├── LocalNoxCompute.sol         # Local Nox FHE mock (Hardhat chainId 31337)
+│       └── TestRwaPerpMath.sol         # PnL math exposure for unit testing
+│
+├── frontend/                           # dApp (Next.js 16 / Tailwind CSS / Ethers v6)
+│   ├── src/app/
+│   │   ├── page.tsx                    # Home — Interactive Confidentiality Demo
+│   │   ├── investor/page.tsx           # Confidential Trading — charts, positions, margin
+│   │   ├── portfolio/page.tsx          # Shadow Wallet — balances, PnL, yield strategy
+│   │   ├── auditor/page.tsx            # Compliance Portal — auditor access & revocation
+│   │   ├── agent/page.tsx              # Agent Dashboard — rebalancing pipeline
+│   │   ├── layout.tsx                  # Root layout (Web3Provider, Navbar, fonts)
+│   │   ├── globals.css                 # Design system (light zinc + indigo)
+│   │   ├── icon.png                    # App favicon
+│   │   └── api/charts/[asset]/route.ts # REST API: live oracle price + GBM seed history
+│   ├── src/components/
+│   │   ├── Navbar.tsx                  # Main navigation bar
+│   │   ├── Web3Provider.tsx            # Wagmi + RainbowKit provider
+│   │   ├── AutomatedYieldStrategyWidget.tsx  # Sovereign yield policy & APY engine
+│   │   ├── AuditorAccessPanel.tsx      # Privacy compliance & auditor access control
+│   │   ├── OnChainEventFeed.tsx        # Real-time Sepolia event log stream
+│   │   ├── OnChainAuditRegistry.tsx    # On-chain audit trail viewer
+│   │   ├── FheHandleInspector.tsx      # TEE Handle & Ciphertext inspector
+│   │   ├── GasChart.tsx                # Interactive gas scaling SVG chart
+│   │   ├── MevVisualizer.tsx           # MEV protection flow visualizer
+│   │   ├── RedactionBar.tsx            # Encrypted value redaction component
+│   │   ├── ComplianceCertificateModal.tsx  # Compliance certificate generator
+│   │   ├── ConfirmModal.tsx            # Transaction confirmation modal
+│   │   ├── RoleBanner.tsx              # Role-based access banner
+│   │   ├── Stepper.tsx                 # Multi-step flow visualizer
+│   │   ├── Tooltip.tsx                 # Reusable tooltip component
+│   │   ├── PageTransition.tsx          # Page transition animations
+│   │   └── charts/
+│   │       ├── TradingViewChart.tsx     # Full-featured oracle price chart
+│   │       └── SparklineChart.tsx       # Compact sparkline SVG chart
+│   └── src/lib/
+│       ├── contracts.ts                # Deployed addresses & ABIs (single source of truth)
+│       ├── web3.ts                     # Provider utilities, network helpers
+│       ├── nox.ts                      # iExec Nox SDK integration
+│       ├── format.ts                   # Oracle value formatting utilities
+│       ├── marketData.ts               # US Treasury FiscalData API integration
+│       └── hooks/
+│           └── useOracleChart.ts       # Custom hook for oracle chart data & polling
+│
+├── test/                               # Test Suite (Hardhat / Chai / Ethers v6)
+│   ├── RealVaultCore.test.js           # Core FundVault + DisclosureManager integration
+│   ├── RwaPerpEngine.test.js           # Perpetual engine lifecycle (24/24 passing)
+│   ├── RwaPerpEngine.pbt.test.js       # Property-based testing (invariant fuzzing)
+│   ├── RwaPerpMath.test.js             # PnL math unit tests
+│   ├── RwaPerpTypes.test.js            # Struct & type validation tests
+│   ├── PnlSettlementIntegration.test.js  # End-to-end PnL settlement
+│   ├── ChainlinkRwaOracleAdapter.test.js # Oracle adapter unit tests
+│   └── SignedNavOracleAdapter.test.js    # Signed NAV oracle tests
+│
+├── scripts/                            # Deployment & Operations (28 scripts)
+│   ├── deploy.js                       # Main deployment orchestrator
+│   ├── deploy-rwa-perp-engine.js       # RwaPerpEngine deployment
+│   ├── deploy-rebalancer.js            # RebalancerAgent deployment
+│   ├── authorize-rwa-perp-engine.js    # FundVault ACL authorization
+│   ├── fund-treasury.js                # Treasury funding script
+│   ├── publish-nav-prices.js           # NAV price publisher (rUSTB/rCRE)
+│   ├── gas-scaling-benchmark.js        # Empirical gas benchmark runner
+│   ├── setup-multisig.js               # Gnosis Safe multisig setup
+│   └── ...                             # 20+ additional operational scripts
+│
+├── docs/                               # Technical Documentation
+│   ├── ACCESS-CONTROL-AUDIT.md         # ACL permission matrix & audit
+│   ├── EMERGENCY-RUNBOOK.md            # Emergency response procedures
+│   ├── JUDGE-DEMO-GUIDE.md             # Hackathon judge walkthrough guide
+│   └── MULTISIG-SETUP.md              # Multisig governance setup guide
+│
+├── deployments/                        # Deployment Manifests
+│   ├── sepolia.json                    # Core contract addresses
+│   ├── sepolia-rwa-perp-engine.json    # RwaPerpEngine system addresses
+│   └── multisig-config.json            # Multisig signer configuration
+│
+├── benchmarks/                         # Empirical Gas Measurements
+│   └── gas-scaling-sepolia.json        # O(n) gas scaling data (2-4 LPs)
+│
+├── DEPLOYMENT-COMPLETE-SEPOLIA.md      # Full deployment completion report
+├── DEPLOYMENT-STATUS.md                # Deployment status tracking
+├── DEPLOYMENT-SUMMARY.md               # Deployment summary & verification
+├── SEPOLIA-DEPLOYMENT-STATUS.md        # Sepolia-specific deployment log
+├── feedback.md                         # Developer DX Feedback (iExec Nox)
+├── README.md                           # Project overview & architecture
+├── hardhat.config.js                   # Hardhat config (Sepolia, viaIR: true)
+├── vercel.json                         # Vercel deployment configuration
+├── package.json                        # Root dependencies (Hardhat, Nox SDK)
+└── tsconfig.json                       # TypeScript configuration
 ```
 
 ### Running the Frontend Locally:
