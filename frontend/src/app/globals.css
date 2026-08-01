@@ -63,6 +63,33 @@
   --duration-slow: 350ms;
 }
 
+/* ─── Brand Logo & Text Pro Micro-Animations ───────────── */
+@keyframes brandShimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.brand-text-gradient {
+  background: linear-gradient(135deg, #09090b 0%, #4f46e5 50%, #4338ca 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transition: all 0.3s ease;
+}
+
+.group:hover .brand-text-gradient,
+.group:focus-visible .brand-text-gradient {
+  animation: brandShimmer 3s ease infinite;
+}
+
+.brand-logo-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ─── Base Reset & Typography ─────────────────────────────── */
 body {
   background-color: var(--bg-base);

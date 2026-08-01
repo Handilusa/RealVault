@@ -118,15 +118,105 @@ export default function Navbar() {
     return () => window.removeEventListener("resize", handleResize);
   }, [animateIndicator, pathname]);
 
+  const logoImgRef = useRef<HTMLImageElement>(null);
+  const brandTextRef = useRef<HTMLSpanElement>(null);
+  const badgeRef = useRef<HTMLSpanElement>(null);
+  const floatTweenRef = useRef<gsap.core.Tween | null>(null);
+
+  const handleBrandHoverEnter = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    
+    if (logoImgRef.current) {
+      floatTweenRef.current?.kill();
+
+      gsap.to(logoImgRef.current, {
+        scale: 1.06,
+        y: -1.5,
+        duration: 0.4,
+        ease: "power2.out",
+        onComplete: () => {
+          // Ultra-chill, slow, subtle floating loop
+          floatTweenRef.current = gsap.to(logoImgRef.current, {
+            y: 0.5,
+            duration: 1.8,
+            ease: "sine.inOut",
+            yoyo: true,
+            repeat: -1,
+          });
+        },
+      });
+    }
+
+    if (brandTextRef.current) {
+      gsap.to(brandTextRef.current, {
+        y: -0.5,
+        duration: 0.4,
+        ease: "power2.out",
+        overwrite: "auto",
+      });
+    }
+  };
+
+  const handleBrandHoverLeave = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    if (logoImgRef.current) {
+      floatTweenRef.current?.kill();
+      floatTweenRef.current = null;
+
+      gsap.to(logoImgRef.current, {
+        scale: 1,
+        y: 0,
+        duration: 0.3,
+        ease: "power2.out",
+        overwrite: "auto",
+      });
+    }
+
+    if (brandTextRef.current) {
+      gsap.to(brandTextRef.current, {
+        y: 0,
+        duration: 0.3,
+        ease: "power2.out",
+        overwrite: "auto",
+      });
+    }
+  };
+
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-zinc-200 px-4 sm:px-6 lg:px-10">
       <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-4 h-16">
-        {/* Brand */}
-        <Link href="/" className="flex items-center gap-3 group">
-          <span className="text-lg font-extrabold font-display tracking-tight text-zinc-900 group-hover:text-indigo-600 transition-colors">
+        {/* Brand with GSAP Pro Micro-Animations */}
+        <Link
+          href="/"
+          className="flex items-center gap-3 group focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded-xl p-1 -m-1 transition-all"
+          onMouseEnter={handleBrandHoverEnter}
+          onMouseLeave={handleBrandHoverLeave}
+          onFocus={handleBrandHoverEnter}
+          onBlur={handleBrandHoverLeave}
+        >
+          <div className="brand-logo-container">
+            <img
+              ref={logoImgRef}
+              src="/logo.png"
+              alt="RealVault Logo"
+              className="w-8 h-8 object-contain"
+            />
+          </div>
+          <span
+            ref={brandTextRef}
+            className="text-lg font-extrabold font-display tracking-tight brand-text-gradient"
+          >
             RealVault
           </span>
-          <span className="text-[11px] font-mono px-2.5 py-1 rounded-md bg-zinc-100 text-zinc-500 font-medium border border-zinc-200">
+          <span
+            ref={badgeRef}
+            className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-md bg-zinc-100/90 text-zinc-600 font-medium border border-zinc-200 group-hover:border-indigo-200 group-hover:bg-indigo-50/60 group-hover:text-indigo-700 transition-all duration-300"
+          >
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-0 group-hover:opacity-75 transition-opacity duration-300"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-zinc-400 group-hover:bg-emerald-500 transition-colors duration-300"></span>
+            </span>
             Institutional RWA
           </span>
         </Link>
@@ -166,9 +256,27 @@ export default function Navbar() {
 
         {/* Right: Network Status + Wallet */}
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-2 text-[11px] font-mono px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Ethereum Sepolia</span>
+          <div 
+            className="hidden sm:flex items-center gap-2 text-[11px] font-mono px-3 py-1.5 rounded-xl bg-white text-zinc-900 border border-zinc-200 shadow-2xs hover:border-indigo-300 hover:bg-indigo-50/30 transition-all duration-300 group cursor-default"
+            title="Active Network: Ethereum Sepolia (Chain ID: 11155111)"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+            <svg
+              className="w-3.5 h-3.5 text-indigo-600 group-hover:scale-110 transition-transform shrink-0"
+              viewBox="0 0 784 1277"
+              fill="currentColor"
+            >
+              <path d="M392.07 0L383.5 29.11V872.43L392.07 880.99L784.13 650.04L392.07 0Z" fillOpacity="0.6"/>
+              <path d="M392.07 0L0 650.04L392.07 880.99V471.21V0Z"/>
+              <path d="M392.07 956.52L387.24 962.41V1272.29L392.07 1276.51L784.37 725.68L392.07 956.52Z" fillOpacity="0.6"/>
+              <path d="M392.07 1276.51V956.52L0 725.68L392.07 1276.51Z"/>
+              <path d="M392.07 880.99L784.13 650.04L392.07 471.21V880.99Z" fillOpacity="0.2"/>
+              <path d="M392.07 471.21L0 650.04L392.07 880.99V471.21Z" fillOpacity="0.6"/>
+            </svg>
+            <span className="font-bold text-zinc-900 tracking-tight">Ethereum</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-medium">
+              Sepolia
+            </span>
           </div>
 
           <ConnectButton

@@ -29,6 +29,11 @@ export const metadata: Metadata = {
   title: "RealVault - Confidential RWA Fund with Programmable Disclosure",
   description:
     "Tokenized Real World Asset Fund (60% T-Bills, 40% Real Estate) with encrypted investor positions via iExec Nox TEE and programmable regulator disclosure on Ethereum Sepolia.",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

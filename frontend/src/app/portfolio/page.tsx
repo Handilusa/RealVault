@@ -22,7 +22,7 @@ export interface PnlMetrics {
   formattedPnl: string;
 }
 
-export function computeUnrealizedPnl(
+function computeUnrealizedPnl(
   decryptedFundVaultBalance: number | null,
   grossCollateral: number,
   activeMargin: number = 0
