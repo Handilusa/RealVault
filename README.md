@@ -88,28 +88,242 @@ Captured live on ETH Sepolia across active LP cohorts ($N = 2, 3, 4$ LPs):
 
 ---
 
-## ⚖️ Economic Architecture, Encrypted Margin Flow & PnL Mechanics
+## ⚖️ Economic Architecture: Dual-Income Engine (Yield + Trading)
 
-### 1. Where does Margin come from when Opening a Position?
-- **Custodied Encrypted Balance**: When an investor deposits mUSDC (e.g. $100) into `FundVault.sol`, ERC-20 tokens are transferred to the vault contract on Sepolia, and the investor's balance is stored as an **ERC-7984 confidential handle** (`positions[investor]`).
-- **Zero ERC-20 Transfer on Trade Open**: Opening a perpetual position with $20 margin **does not** require an additional ERC-20 transaction.
-- **On-Chain FHE Debit**: `RwaPerpEngine.openPosition()` executes `_debitMargin()`, which invokes `FundVault.debitFrom(user, marginHandle)`. Inside `FundVault`, `Nox.safeSub(positions[user], marginHandle)` subtracts $20 directly from the user's encrypted balance in `FundVault`.
+> [!NOTE]
+> RealVault's core innovation is a **Dual-Income Architecture** where a single encrypted vault balance simultaneously generates **passive yield** via sovereign allocation policy AND serves as **active trading collateral** for leveraged perpetual positions — all without ever revealing the investor's balance.
+
+### The Dual-Income Flow (How a Single Deposit Works Twice)
+
+```mermaid
+sequenceDiagram
+    participant I as Investor Wallet
+    participant V as FundVault.sol
+    participant R as RebalancerAgent.sol
+    participant E as RwaPerpEngine.sol
+    participant O as Oracle Adapters
+    participant T as Protocol Treasury
+
+    Note over I,V: STEP 1 — Confidential Deposit
+    I->>V: deposit(handle, proof, amount)
+    V->>V: IERC20.transferFrom(mUSDC)
+    V->>V: positions[user] = Nox.add(balance, encryptedAmount)
+
+    Note over V,R: INCOME STREAM 1 — Passive Yield (Sovereign Policy)
+    I->>R: setTargetAllocation(rUSTB: 60%, rCRE: 40%)
+    R->>R: Store sovereign allocation (basis points)
+    Note right of R: Weighted APY = (60% × 5.20%) + (40% × 7.80%) = ~6.24%
+
+    Note over V,E: INCOME STREAM 2 — Active Trading (Leveraged Perpetuals)
+    I->>E: openPosition(rGOLD, margin=20 mUSDC, leverage=5x, LONG)
+    E->>V: debitFrom(user, 20 mUSDC encrypted handle)
+    V->>V: positions[user] = Nox.safeSub(balance, margin)
+    E->>O: latestPrice(rGOLD) → $4,102.60
+    E->>E: Store position with entryPriceE8
+
+    Note over E,T: SETTLEMENT — Close Position
+    I->>E: closePosition(positionIndex)
+    E->>O: latestPrice(rGOLD) → $4,225.00 (exit)
+    E->>E: PnL = +2.98% × 5x × $20 = +$2.98
+    E->>T: Treasury debits $2.98 (encrypted)
+    E->>V: creditTo(user, $20 margin + $2.98 profit)
+    V->>V: positions[user] = Nox.safeAdd(balance, $22.98)
+```
+
+---
+
+## 💰 Encrypted Margin Flow & PnL Mechanics
+
+### 1. Where Does Margin Come From?
+
+When an investor deposits mUSDC (e.g. $100) into `FundVault.sol`, the ERC-20 tokens are transferred to the vault contract on Sepolia, and the investor's balance is stored as an **ERC-7984 confidential handle** (`positions[investor]`).
+
+**Critical Design**: Opening a perpetual position with $20 margin **does not** require any additional ERC-20 transfer. The margin is debited entirely from the user's **existing encrypted vault balance**:
+
+```
+FundVault Balance: ████████ (encrypted, e.g. 100 mUSDC)
+         │
+         ▼ RwaPerpEngine.openPosition()
+         │
+         ├── _debitMargin(user, 20 mUSDC handle)
+         │     └── FundVault.debitFrom(user, marginHandle)
+         │           └── Nox.safeSub(positions[user], marginHandle)
+         │
+         ├── FundVault Balance: ████████ (now 80 mUSDC, encrypted)
+         └── Position Margin:   ████████ (20 mUSDC locked, encrypted)
+```
+
+> [!IMPORTANT]
+> **Zero ERC-20 Transfer on Trade Open**: `RwaPerpEngine.openPosition()` executes `_debitMargin()`, which invokes `FundVault.debitFrom(user, marginHandle)`. Inside `FundVault`, `Nox.safeSub(positions[user], marginHandle)` subtracts the margin directly from the user's encrypted balance. No tokens leave the vault — only the encrypted accounting ledger changes.
 
 ### 2. PnL Settlement & Vault Treasury Solvency
-- **Vault Treasury Reserves**: `RwaPerpEngine` manages an encrypted protocol treasury (`treasuryBalanceHandle`).
-- **Profit Settlement**: When a position is closed in profit (e.g. +$3.00 USDC):
-  - `_settleProfitPnL()` calculates the profit `profitHandle` in FHE math.
-  - It debits $3.00 from `treasuryBalanceHandle` and credits `$20 margin + $3.00 profit` directly to the user's encrypted `FundVault` handle via `IFundVault.creditTo(user, marginPlusProfit)`.
-- **Loss Settlement**: When a position is closed in loss, the loss is credited to `treasuryBalanceHandle` and the remaining margin is returned to the user's `FundVault` handle.
-- **ERC-20 Withdrawal**: At any time, the investor can visit the **Portfolio** page and click **Withdraw**. `FundVault.sol` decrypts their updated total balance ($103 mUSDC) via the Nox TEE enclave and transfers the actual ERC-20 mUSDC tokens to their Web3 wallet.
+
+`RwaPerpEngine` manages an encrypted protocol treasury (`treasuryBalanceHandle`) that acts as the counterparty for all positions:
+
+| Scenario | Settlement Flow | User Receives | Treasury Effect |
+|---|---|---|---|
+| **Profit** (+$3.00) | `_settleProfitPnL()` | Margin ($20) + Profit ($3) = **$23 mUSDC** | Treasury debits $3 |
+| **Loss** (-$5.00) | `_settleLossPnL()` | Margin ($20) - Loss ($5) = **$15 mUSDC** | Treasury credits $5 |
+| **Zero PnL** ($0.00) | Direct return | Full margin ($20) = **$20 mUSDC** | No change |
+| **Total Loss** (-100%) | Loss capped to margin | **$0 mUSDC** | Treasury credits $20 |
+
+**Key Safety Mechanisms**:
+- **Loss Capping**: `Nox.select(lossExceedsMargin, marginHandle, lossHandle)` — losses can never exceed the deposited margin
+- **Treasury Solvency Check**: `Nox.select(treasuryCovers, profitHandle, treasuryBalance)` — profits are capped to available treasury reserves
+- **All arithmetic uses `Nox.safeAdd` / `Nox.safeSub`** with `ebool` validation to prevent underflow/overflow
+- **ERC-20 Withdrawal**: At any time, the investor can withdraw. `FundVault.sol` decrypts their total balance via the Nox TEE enclave and transfers actual ERC-20 mUSDC tokens to their Web3 wallet
 
 ### 3. Exact On-Chain Integer Math (`1e8`) vs UI Floating-Point Preview
-- **On-Chain EVM Precision**: Solidity smart contracts do not use floating-point arithmetic. Prices are stored in 8-decimal fixed-point integers (`uint128` with `1e8` scale factor, e.g. `$4,101.45` = `410145000000`).
-- **Exact Delta Computation**: When closing a position on-chain:
-  $$\Delta P = \text{exitPriceE8} - \text{entryPriceE8}$$
-  $$\text{pnlScalar} = \frac{\Delta P \times \text{leverage} \times 10^8}{\text{entryPriceE8}}$$
-  If the oracle price has not updated on Sepolia between opening and closing, $\Delta P = 0 \implies \text{PnL} = \$0.00$ on-chain, ensuring 100% mathematical integrity.
-- **Demo Volatility Simulator (Pitch & Judges Tool)**: The dApp features a built-in Volatility Simulator (`+3.0% Gold Pump` / `-3.0% Gold Dump`) that allows judges and investors to test live PnL settlement and FHE balance updates on Sepolia without waiting for Chainlink testnet oracle heartbeats.
+
+**On-Chain EVM Precision**: Solidity smart contracts do not use floating-point arithmetic. Prices are stored in 8-decimal fixed-point integers (`uint128` with `1e8` scale factor, e.g. `$4,101.45` = `410145000000`).
+
+**Exact Delta Computation**: When closing a position on-chain:
+$$\Delta P = \text{exitPriceE8} - \text{entryPriceE8}$$
+$$\text{pnlScalar} = \frac{\Delta P \times \text{leverage} \times 10^8}{\text{entryPriceE8}}$$
+
+If the oracle price has not updated on Sepolia between opening and closing, $\Delta P = 0 \implies \text{PnL} = \$0.00$ on-chain, ensuring 100% mathematical integrity.
+
+**Demo Volatility Simulator (Pitch & Judges Tool)**: The dApp features a built-in Volatility Simulator (`+3.0% Gold Pump` / `-3.0% Gold Dump`) that allows judges and investors to test live PnL settlement and FHE balance updates on Sepolia without waiting for Chainlink testnet oracle heartbeats.
+
+---
+
+## 📈 Sovereign Yield Policy & APY Calculation Engine
+
+### How APY is Calculated (Market Benchmark Simulation & On-Chain Verification)
+
+RealVault's **Automated Yield Strategy Widget** computes projected APY through a transparent, auditable methodology:
+
+#### Step 1: Asset-Class Market Benchmarks (Fallback Rates)
+
+When on-chain historical NAV data spans less than 24 hours (insufficient for annualization), the system uses **documented market benchmarks** as conservative fallback rates:
+
+| Asset Class | Benchmark APY | Source | Oracle Contract |
+|---|---|---|---|
+| **rUSTB** (US Treasury Bills) | ~5.20% | US Treasury FiscalData API | `SignedNavOracleAdapter` (`0x1A8A59...`) |
+| **rCRE** (Commercial Real Estate) | ~7.80% | Institutional CRE Index | `SignedNavOracleAdapter` (`0x1A8A59...`) |
+
+#### Step 2: On-Chain Annualized APY (When Available)
+
+When `SignedNavOracleAdapter.sol` has at least 24 hours of `NavSubmitted` event history on Sepolia, the system calculates a **real annualized APY** directly from on-chain data:
+
+```
+APY = ( NAV_latest / NAV_earliest ) ^ ( 365 / timeSpanDays ) - 1
+```
+
+- Clamped between **-50% and +200%** for economic sanity
+- Requires ≥ 1.0 full day of on-chain NAV history
+- Source: `SignedNavOracleAdapter.sol` event logs queried via Sepolia RPC
+
+#### Step 3: Weighted Target APY (Sovereign Policy Derived)
+
+The investor's **sovereign allocation policy** (stored on-chain in `RebalancerAgent.sol`) determines the weighted target APY:
+
+```
+Weighted APY = (rUSTB_Weight × rUSTB_APY) + (rCRE_Weight × rCRE_APY)
+```
+
+#### Policy Allocation Presets
+
+| Preset | rUSTB (T-Bills) | rCRE (Real Estate) | Weighted Target APY |
+|---|---|---|---|
+| **Conservative T-Bills** | 80% | 20% | ~5.72% |
+| **Balanced Strategy** | 50% | 50% | ~6.50% |
+| **High-Yield CRE** | 30% | 70% | ~7.02% |
+
+### Save Sovereign Policy On-Chain
+
+When an investor clicks **"Save Sovereign Policy On-Chain"**, the dApp executes a live Sepolia transaction to `RebalancerAgent.setTargetAllocation(targetA, targetB)`:
+
+```solidity
+// RebalancerAgent.sol — Sovereign allocation policy storage
+function setTargetAllocation(uint256 _targetA, uint256 _targetB) external {
+    require(_targetA + _targetB == 10000, "Allocation must sum to 100%");
+    userTargetAllocA[msg.sender] = _targetA;  // e.g. 6000 = 60% rUSTB
+    userTargetAllocB[msg.sender] = _targetB;  // e.g. 4000 = 40% rCRE
+    emit TargetAllocationUpdated(msg.sender, _targetA, _targetB);
+}
+```
+
+This registers the investor's **sovereign preference** on-chain. The allocation policy determines how the vault's idle capital is distributed between Sovereign Debt (rUSTB) and Commercial Real Estate (rCRE) yield strategies, while remaining capital is simultaneously available for active margin trading.
+
+---
+
+## 🔄 Dual-Income Coexistence: Yield + Trading Simultaneously
+
+> [!TIP]
+> **The key insight**: An investor's `FundVault` balance is a single encrypted pool that serves **two purposes at once**:
+> 1. **Idle capital** generates passive APY through the sovereign allocation policy (`RebalancerAgent.sol`)
+> 2. **Active margin** is locked in leveraged perpetual positions (`RwaPerpEngine.sol`)
+>
+> Both income streams coexist. When a position is closed, margin + PnL returns to the vault balance, immediately rejoining the yield pool.
+
+### Complete Capital Lifecycle Example
+
+```
+Investor deposits $100 mUSDC into FundVault
+    │
+    ├── $80 remains as "free balance" (idle capital)
+    │     └── Generating ~6.50% APY via Sovereign Policy (50/50 rUSTB/rCRE)
+    │           ├── $40 allocated to rUSTB → 5.20% benchmark
+    │           └── $40 allocated to rCRE  → 7.80% benchmark
+    │
+    └── $20 locked as margin in RwaPerpEngine
+          └── rGOLD LONG 5x Leverage
+                ├── Entry: $4,102.60 (Chainlink XAU/USD)
+                ├── Exit:  $4,225.00 (+2.98%)
+                └── PnL:   +$2.98 (2.98% × 5x × $20)
+
+Position closes → $22.98 returns to FundVault
+    │
+    └── New free balance: $102.98 (all generating yield)
+```
+
+### Portfolio View: Total Net Equity
+
+The dApp's **Shadow Wallet** (Portfolio) and **Home** page display a complete breakdown:
+
+| Component | Value | Visibility |
+|---|---|---|
+| **Vault Position Balance (Free)** | ████████ (encrypted) | Revealed after EIP-712 wallet authorization |
+| **Active Locked Margin (Perp Engine)** | ████████ (encrypted) | Revealed after EIP-712 wallet authorization |
+| **Total Net Equity** | Free Balance + Active Margin | Computed client-side after decryption |
+| **Unrealized PnL** | (Net Equity - Gross Collateral) | Live from oracle price delta |
+
+> [!CAUTION]
+> All financial values (vault balance, active margin, total equity) remain **fully redacted** behind `RedactionBar` components until the investor explicitly authorizes decryption via EIP-712 wallet signature. This prevents accidental information disclosure on shared screens or screenshots.
+
+---
+
+## 📈 Live Oracle Price Charts & Market Data Architecture
+
+### On-Chain Oracle Integration
+RealVault integrates **live on-chain oracle price feeds** for all three RWA asset classes:
+
+| Asset | Oracle Type | Feed Address | Update Cadence |
+|---|---|---|---|
+| `rGOLD` | Chainlink XAU/USD | `0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea` | 1-hour heartbeat |
+| `rUSTB` | SignedNavOracleAdapter | `0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5` | Daily NAV (24h settlement) |
+| `rCRE` | SignedNavOracleAdapter | `0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5` | Weekly NAV (7d settlement) |
+
+### Oracle Adapter Architecture
+
+Each asset class uses a specific oracle adapter implementing the `IRwaPriceOracle` interface:
+
+- **`ChainlinkRwaOracleAdapter`** (`0x2deA58...`): Wraps Chainlink's `AggregatorV3Interface` for rGOLD (XAU/USD). Reads `latestRoundData()` directly on-chain with staleness validation.
+- **`SignedNavOracleAdapter`** (`0x1A8A59...`): Custom adapter for rUSTB and rCRE. Accepts signed NAV updates from authorized publishers (US Treasury FiscalData API for T-Bills, institutional CRE index for Real Estate). Each update emits a `NavSubmitted` event on Sepolia with the 8-decimal price and publisher signature.
+
+### Honest Data Strategy
+Chart data uses a **dual-layer rendering** approach:
+- **Solid glowing line**: Verified on-chain data points (`NavSubmitted` event logs queried from Sepolia, marked `isRealOnChain: true`).
+- **Dashed baseline line**: Synthetic seed data generated via **Reverse Geometric Brownian Motion (GBM)** with deterministic Mulberry32 PRNG, calibrated to the live oracle price.
+
+All 8-decimal oracle values (`priceE8 / 1e8`) pass through shared utility functions (`formatOracleValue()`, `formatOracleDisplay()`) for consistent formatting across the entire frontend.
+
+### REST API Endpoint
+`GET /api/charts/[asset]?range=24h|7d|30d|all`
+- 30-second serverless in-memory cache per asset+range
+- Live current price fetched on-chain via `createFallbackProvider` with multi-RPC failover
+- Case-insensitive asset key matching (`rGOLD`, `RGOLD`, `rgold`)
 
 ---
 
@@ -119,19 +333,27 @@ Captured live on ETH Sepolia across active LP cohorts ($N = 2, 3, 4$ LPs):
 iXEC/
 ├── contracts/                  # Smart Contracts (Hardhat / Solidity 0.8.35)
 │   ├── FundVault.sol           # Confidential Vault managing ERC-7984 LP positions
+│   ├── RwaPerpEngine.sol       # Leveraged perpetual engine with encrypted margin & PnL
+│   ├── RwaPerpMath.sol         # Pure PnL calculation library (1e8 fixed-point)
+│   ├── RwaPerpTypes.sol        # Position & AssetConfig struct definitions
 │   ├── NAVAggregator.sol       # Homomorphic NAV summation engine
 │   ├── DisclosureManager.sol   # Scoped ACL & Handle Rotation revocation manager
-│   ├── RebalancerAgent.sol     # TEE Enclave portfolio swap controller
+│   ├── RebalancerAgent.sol     # Sovereign per-user allocation policy controller
+│   ├── ChainlinkRwaOracleAdapter.sol  # Chainlink XAU/USD oracle wrapper
+│   ├── SignedNavOracleAdapter.sol      # Signed NAV oracle for rUSTB & rCRE
 │   └── MockUSDC.sol            # Testnet collateral token
 ├── frontend/                   # Single-Page dApp (Next.js / Tailwind CSS / Ethers v6)
 │   ├── src/app/globals.css     # Institutional light zinc design system
 │   ├── src/app/page.tsx        # Main dApp Dashboard & Interactive Demo
-│   ├── src/app/investor/page.tsx  # Investor portal with trading charts & privacy tools
+│   ├── src/app/portfolio/page.tsx  # Shadow Wallet: balances, PnL, yield strategy
+│   ├── src/app/investor/page.tsx   # Confidential Trading: charts, positions, margin
 │   ├── src/app/api/charts/[asset]/route.ts  # REST API: live oracle price + GBM seed history
-│   ├── src/components/         # OnChainEventFeed, FheHandleInspector, GasChart, Tooltip, Stepper, etc.
+│   ├── src/components/         # OnChainEventFeed, FheHandleInspector, GasChart, Tooltip, etc.
 │   ├── src/components/charts/  # TradingViewChart, SparklineChart (SVG oracle visualizations)
+│   ├── src/components/AutomatedYieldStrategyWidget.tsx  # Sovereign yield policy & APY engine
+│   ├── src/components/AuditorAccessPanel.tsx  # Privacy compliance & auditor access control
 │   ├── src/lib/hooks/useOracleChart.ts  # Custom React hook for oracle chart data & polling
-│   ├── src/lib/format.ts       # Shared oracle value formatting (formatOracleValue, formatOracleDisplay)
+│   ├── src/lib/format.ts       # Shared oracle value formatting
 │   └── src/lib/marketData.ts   # Live US Treasury FiscalData API integration
 ├── scripts/                    # Deployment & benchmark scripts
 ├── deployments/                # Deployed contract addresses (sepolia.json)
@@ -151,40 +373,13 @@ npm run dev
 
 Navigate to `http://localhost:3000` to interact with:
 1. **Interactive Confidentiality Demo**: Connect Web3 wallet, execute client-encrypted deposits and withdrawals directly on Sepolia.
-2. **Live Portfolio Dashboard**: Real-time NAV, 4 active Sepolia LPs, target allocation policy (60% Sovereign Debt / 40% CRE), and encrypted LP ledger.
-3. **On-Chain Event Monitor**: Real-time log stream with auto-halving chunked log querying across Sepolia contracts.
-4. **Compliance Portal**: Grant auditor view access and trigger $O(n)$ Handle Rotation access revocation.
-5. **Rebalancing Suite**: Execute confidential rebalancing transactions directly on `RebalancerAgent.sol`.
-6. **Empirical Gas Chart**: Interactive SVG chart mapping gas scaling curves on Sepolia.
-7. **Live Oracle Price Charts**: Interactive TradingView-style charts for rGOLD (Chainlink XAU/USD), rUSTB (NAV daily), and rCRE (NAV weekly) with real on-chain price feeds, sparkline micro-charts, and range selectors (24H/7D/30D/ALL).
-8. **Investor Privacy & Auditor Access Portal**: Grant/revoke auditor viewing permissions with cryptographic Single-User Handle Rotation and Enclave Security Pulse monitoring.
-9. **Confidential Rebalance Engine**: Compact pipeline visualizer showing Delta Handle → Enclave TEE Nox → Settle On-Chain execution flow with real-time block confirmations.
-
----
-
-## 📈 Live Oracle Price Charts & Market Data Architecture
-
-### On-Chain Oracle Integration
-RealVault integrates **live on-chain oracle price feeds** for all three RWA asset classes:
-
-| Asset | Oracle Type | Feed Address | Update Cadence |
-|---|---|---|---|
-| `rGOLD` | Chainlink XAU/USD | `0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea` | 1-hour heartbeat |
-| `rUSTB` | SignedNavOracleAdapter | `0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26` | Daily NAV (24h settlement) |
-| `rCRE` | SignedNavOracleAdapter | `0xb8725f00342cC7AcBfdc38E16F45CCF7741D8F26` | Weekly NAV (7d settlement) |
-
-### Honest Data Strategy
-Chart data uses a **dual-layer rendering** approach:
-- **Solid glowing line**: Verified on-chain data points (`NavSubmitted` event logs queried from Sepolia, marked `isRealOnChain: true`).
-- **Dashed baseline line**: Synthetic seed data generated via **Reverse Geometric Brownian Motion (GBM)** with deterministic Mulberry32 PRNG, calibrated to the live oracle price.
-
-All 8-decimal oracle values (`priceE8 / 1e8`) pass through shared utility functions (`formatOracleValue()`, `formatOracleDisplay()`) for consistent formatting across the entire frontend.
-
-### REST API Endpoint
-`GET /api/charts/[asset]?range=24h|7d|30d|all`
-- 30-second serverless in-memory cache per asset+range
-- Live current price fetched on-chain via `createFallbackProvider` with multi-RPC failover
-- Case-insensitive asset key matching (`rGOLD`, `RGOLD`, `rgold`)
+2. **Shadow Wallet Dashboard**: Encrypted vault balance, active locked margin, total net equity, unrealized PnL, and sovereign yield strategy configuration.
+3. **Confidential Trading Portal**: TradingView-style charts for rGOLD/rUSTB/rCRE, open/close leveraged perpetual positions with encrypted margin, real-time oracle price feeds.
+4. **Automated Yield Strategy Widget**: Configure sovereign allocation policy (rUSTB/rCRE split), view weighted APY projections, save policy on-chain to `RebalancerAgent.sol`.
+5. **On-Chain Event Monitor**: Real-time log stream with auto-halving chunked log querying across Sepolia contracts.
+6. **Compliance Portal**: Grant auditor view access and trigger $O(n)$ Handle Rotation access revocation.
+7. **Empirical Gas Chart**: Interactive SVG chart mapping gas scaling curves on Sepolia.
+8. **TEE Handle & Ciphertext Inspector**: Deep inspection of live on-chain encrypted handles with chain ID binding verification, ACL enclave contract links, and Etherscan verification.
 
 ---
 
