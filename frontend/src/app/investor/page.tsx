@@ -1000,8 +1000,15 @@ export default function ConfidentialTradingTerminal() {
                         <span className="text-zinc-400">Sepolia Testnet</span>
                       </span>
                     </div>
-                    <div className={`text-[9px] ${oracleData.rGOLD.isStale ? "text-amber-600" : "text-zinc-400"}`}>
-                      Last update: {oracleData.rGOLD.updatedAtText}
+                    <div className="flex items-center justify-between text-[9px]">
+                      <span className={oracleData.rGOLD.isStale ? "text-amber-600" : "text-zinc-400"}>
+                        Last update: {oracleData.rGOLD.updatedAtText}
+                      </span>
+                      {(new Date().getDay() === 0 || new Date().getDay() === 6) && (
+                        <span className="bg-amber-100 text-amber-900 font-sans font-medium px-1.5 py-0.5 rounded text-[8px]">
+                          Weekend Closed
+                        </span>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -1039,8 +1046,14 @@ export default function ConfidentialTradingTerminal() {
                   </div>
 
                   <div className="mt-1 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-200/60 pt-2">
-                    <span className="text-zinc-500">Signed NAV</span>
-                    <span className="text-zinc-400">24h Settlement</span>
+                    <span className="text-zinc-500">Signed NAV (24h)</span>
+                    {(new Date().getDay() === 0 || new Date().getDay() === 6) ? (
+                      <span className="bg-amber-100 text-amber-900 font-sans font-medium px-1.5 py-0.5 rounded text-[8px]">
+                        Weekend Closed
+                      </span>
+                    ) : (
+                      <span className="text-zinc-400">24h Settlement</span>
+                    )}
                   </div>
                 </button>
 
@@ -1077,8 +1090,14 @@ export default function ConfidentialTradingTerminal() {
                   </div>
 
                   <div className="mt-1 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-200/60 pt-2">
-                    <span className="text-zinc-500">Signed NAV</span>
-                    <span className="text-zinc-400">7d Settlement</span>
+                    <span className="text-zinc-500">Signed NAV (7d)</span>
+                    {(new Date().getDay() === 0 || new Date().getDay() === 6) ? (
+                      <span className="bg-amber-100 text-amber-900 font-sans font-medium px-1.5 py-0.5 rounded text-[8px]">
+                        Weekend Closed
+                      </span>
+                    ) : (
+                      <span className="text-zinc-400">7d Settlement</span>
+                    )}
                   </div>
                 </button>
               </div>
