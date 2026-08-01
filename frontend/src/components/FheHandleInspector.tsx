@@ -289,21 +289,23 @@ export default function FheHandleInspector({
       {activeHandle && (
         <div className="space-y-4">
           {/* Raw handle hex */}
-          <div className="p-4 rounded-lg bg-zinc-900 text-zinc-100 font-mono text-xs break-all leading-relaxed relative group">
-            <span className="text-zinc-500 text-[10px] block mb-1 uppercase tracking-wider">
-              {activeSource ? `${activeSource.source}.${activeSource.method}` : "Custom Handle"}
-            </span>
-            <code className="text-emerald-400 text-[13px]">{activeHandle}</code>
-            {activeSource && (
-              <a
-                href={`${ETHERSCAN_BASE}/address/${activeSource.sourceAddress}#readContract`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="absolute top-3 right-3 text-[10px] px-2 py-1 rounded bg-zinc-800 text-indigo-400 hover:text-indigo-300 border border-zinc-700 font-semibold transition-colors"
-              >
-                Verify on Etherscan &rarr;
-              </a>
-            )}
+          <div className="p-4 rounded-xl bg-white border border-indigo-200/90 text-zinc-900 font-mono text-xs break-all leading-relaxed relative group shadow-2xs">
+            <div className="flex justify-between items-center mb-1.5 gap-2">
+              <span className="text-indigo-600 text-[10px] font-bold uppercase tracking-wider">
+                {activeSource ? `${activeSource.source}.${activeSource.method}` : "Custom Handle"}
+              </span>
+              {activeSource && (
+                <a
+                  href={`${ETHERSCAN_BASE}/address/${activeSource.sourceAddress}#readContract`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:text-indigo-900 border border-indigo-200 font-semibold transition-colors shrink-0"
+                >
+                  Verify on Etherscan &rarr;
+                </a>
+              )}
+            </div>
+            <code className="text-indigo-950 font-bold text-[13px] block tracking-tight">{activeHandle}</code>
           </div>
 
           {/* Verification Matrix */}
