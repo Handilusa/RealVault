@@ -1,6 +1,7 @@
 # RealVault - Confidential Institutional RWA Fund Router
 
 > **iExec WTF Hackathon Summer Edition Project**  
+> **Live Web App**: [https://real-vault.vercel.app/](https://real-vault.vercel.app/)  
 > **Deployment Target**: Ethereum Sepolia (`chainId: 11155111`)  
 > **Smart Contract SDK**: `@iexec-nox/nox-protocol-contracts@0.2.4` & `@iexec-nox/nox-confidential-contracts@0.2.4`  
 > **Client Library**: `@iexec-nox/handle@0.1.0-beta.13`  
