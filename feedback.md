@@ -56,7 +56,7 @@ The Nox Protocol provides robust confidential primitives on-chain while keeping 
 
 ## 4. Phase 3 Testing Deep Dive: RwaPerpEngine Position Lifecycle
 
-**Date**: January 2025  
+**Date**: June–July 2026  
 **Feature**: Confidential RWA Perpetual Engine  
 **Test Suite**: `test/RwaPerpEngine.test.js`  
 **Final Status**: ✅ **24/24 tests passing** (100% success rate)
@@ -316,22 +316,21 @@ await expect(tx)
 - ✅ Position isolation: Multiple users can hold concurrent positions independently
 - ✅ Immutable entry snapshots: Entry price/round/source recorded at open, never mutated
 
-### 4.4 Pending Challenges for Future Phases
+### 4.4 Resolved Challenges & Remaining Work
 
-#### 🔴 CRITICAL: Deployment to Sepolia Testnet
+#### ✅ RESOLVED: Deployment to Sepolia Testnet
 
-**Context**:
-- Local tests pass with `LocalNoxCompute` (`chainId 31337`)
-- Production requires iExec Nox Gateway on Sepolia (`chainId 11155111`)
+**Status**: All contracts successfully deployed and verified on Ethereum Sepolia.
 
-**Blockers**:
-- Configure iExec Nox Gateway credentials (API key, endpoint)
-- Update deployment scripts with Nox Gateway address
-- Test `Nox.fromExternal()` with real encrypted inputs (not dummy `0x` proofs)
-- Validate Chainlink oracle feeds on Sepolia (replace mocks with real feeds)
-- Test end-to-end flow: frontend generates encrypted input → contract processes → user decrypts result
+**Completed**:
+- ✅ Configured iExec Nox Gateway (`0x24Ef36Ec5b626D7DCD09a98F3083c2758F0F77bF`)
+- ✅ Deployed all 10 contracts (FundVault, RwaPerpEngine, NAVAggregator, etc.)
+- ✅ Validated `Nox.fromExternal()` with real encrypted inputs from `@iexec-nox/handle` browser SDK
+- ✅ Chainlink XAU/USD feed live on Sepolia (`0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea`)
+- ✅ SignedNavOracleAdapter live for rUSTB and rCRE (`0x1A8A598acEd7e7218025e09e80C5CB21B57E15c5`)
+- ✅ End-to-end flow verified: frontend generates encrypted input → contract processes → user decrypts result via EIP-712
 
-**Risk**: UDVT encoding issues may resurface when integrating with frontend. Be prepared to create wrapper functions if needed.
+**Lesson Learned**: UDVT encoding issues were resolved by using `@iexec-nox/handle` browser SDK directly (bypassing manual ethers v6 ABI encoding). The SDK handles `externalEuint256` serialization transparently.
 
 #### 🟡 IMPORTANT: Property-Based Testing (PBT)
 
@@ -435,7 +434,7 @@ euint256 cappedLoss = Nox.select(lossExceedsMargin, marginHandle, lossHandle);
 
 ---
 
-## 6. Live Testnet Incident Post-Mortem: FHE 256-bit Underflow Mitigation
+## 5. Live Testnet Incident Post-Mortem: FHE 256-bit Underflow Mitigation
 
 **Date**: July 2026  
 **Target Contract**: `FundVault.sol` (`_internalWithdraw`)  
@@ -443,7 +442,7 @@ euint256 cappedLoss = Nox.select(lossExceedsMargin, marginHandle, lossHandle);
 **Severity**: High (Confidential Handle State Corruption)  
 **Status**: RESOLVED ✅
 
-### 6.1 Vulnerability Description & Empirical Discovery
+### 5.1 Vulnerability Description & Empirical Discovery
 
 During live testnet verification of confidential withdrawals, decrypting an investor's position handle via the iExec Nox TEE Gateway yielded an astronomical value:
 $$\text{Decrypted Value: } 1.157920892373162 \times 10^{77} \text{ mUSDC}$$
@@ -454,7 +453,7 @@ $$\text{Decrypted Value: } 1.157920892373162 \times 10^{77} \text{ mUSDC}$$
 3. **256-bit Underflow**: Executing $100 - 200$ in unsigned 256-bit FHE arithmetic wrapped around to $2^{256} - 100$, producing `115,792,089,237,316,195,423,570,985,008,687,907,853,269,984,665,640,564,039,457,584,007,913,129,639,936`.
 4. **TEE Enclave Decryption**: The Nox Gateway faithfully decrypted this corrupted handle, exposing the $2^{256}$ underflow state.
 
-### 6.2 Remediation & Architectural Enforcement
+### 5.2 Remediation & Architectural Enforcement
 
 #### Contract Patch (`FundVault.sol`):
 Replaced bare `Nox.add` / `Nox.sub` in `_internalDeposit()` and `_internalWithdraw()` with the **Safe FHE Arithmetic & Encrypted Branching Pattern**:
@@ -471,7 +470,7 @@ positions[msg.sender] = Nox.select(subOk, result, positions[msg.sender]);
 
 ---
 
-## 7. Overall Conclusion & Next Steps
+## 6. Overall Conclusion & Next Steps
 
 The iExec Nox protocol provides production-grade confidential computing primitives that enable institutional-grade DeFi applications. The Phase 3 testing journey revealed critical patterns for FHE development that should be documented for future developers.
 
@@ -485,13 +484,13 @@ The iExec Nox protocol provides production-grade confidential computing primitiv
 
 ---
 
-## 8. Frontend Integration Bugs & Errors (July 2026 - Oracle Charts Session)
+## 7. Frontend Integration Bugs & Errors (July 2026 - Oracle Charts Session)
 
 **Date**: July 2026  
 **Feature**: Live Oracle Price Charts, Investor Privacy Portal, Confidential Rebalance Engine  
 **Network**: Ethereum Sepolia (`chainId: 11155111`)
 
-### 8.1 HTTP 400 - API Route Case-Sensitivity Mismatch
+### 7.1 HTTP 400 - API Route Case-Sensitivity Mismatch
 
 **Bug**: The `/api/charts/[asset]` REST endpoint returned HTTP 400 when the frontend requested `/api/charts/rGOLD` but the route handler compared against uppercase keys (`RGOLD`).
 
@@ -510,7 +509,7 @@ const assetKey = Object.keys(ASSET_CONFIGS).find(
 
 **Key Learning**: Always implement case-insensitive matching for user-facing API route parameters, especially when asset tickers can be typed in mixed case.
 
-### 8.2 Incorrect Oracle Price - Hardcoded Seed vs. Live On-Chain Price
+### 7.2 Incorrect Oracle Price - Hardcoded Seed vs. Live On-Chain Price
 
 **Bug**: The rGOLD chart displayed `$2,958.73` while the actual Chainlink XAU/USD oracle price was `$4,044.53`. The chart's historical data generated a linear ramp to a stale hardcoded price.
 
@@ -527,7 +526,7 @@ Additionally replaced the linear interpolation seed algorithm with **Reverse Geo
 
 **Key Learning**: Never hardcode oracle prices in chart endpoints. Always fetch the real-time price on-chain and use it as the anchor for any synthetic/seed data generation.
 
-### 8.3 Next.js 16 `context.params` is a Promise
+### 7.3 Next.js 16 `context.params` is a Promise
 
 **Bug**: API route handler failed silently when accessing `context.params.asset` directly.
 
@@ -543,7 +542,7 @@ const { asset } = params;
 
 **Key Learning**: Next.js 16 made `params` async in API routes. This is a breaking change from Next.js 15 that is not immediately obvious from error messages.
 
-### 8.4 Hardcoded Contract Count ("6 smart contracts" with 10 deployed)
+### 7.4 Hardcoded Contract Count ("6 smart contracts" with 10 deployed)
 
 **Bug**: The "Proofs & Verification" section header displayed "6 smart contracts deployed" while `DEPLOYED_ADDRESSES.contracts` contained 10 entries (MockUSDC, WrappedUSDC, FundVault, NAVAggregator, DisclosureManager, RebalancerAgent, RwaPerpEngine, ChainlinkOracle, SignedNavOracle, SafeMultisig).
 
@@ -560,7 +559,7 @@ const { asset } = params;
 
 **Key Learning**: Never hardcode counts that derive from data structures. Always compute them dynamically to prevent stale UI when contracts are added or removed.
 
-### 8.5 SafeMultisig Grid Orphan - Empty Space in 3-Column Layout
+### 7.5 SafeMultisig Grid Orphan - Empty Space in 3-Column Layout
 
 **Bug**: With 10 contracts in a 3-column grid (`3×3 = 9 slots`), SafeMultisig occupied position 10, leaving two empty cells in the last row.
 
