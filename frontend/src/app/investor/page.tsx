@@ -264,6 +264,9 @@ export default function ConfidentialTradingTerminal() {
       }
 
       // Fetch Live Oracle Prices & Timestamps
+      // Store fresh prices in local vars so PnL computation below uses real-time data
+      // (React setState doesn't update the closure's oracleData)
+      const freshPrices: Record<string, number> = {};
       try {
         const chainlinkOracle = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.ChainlinkOracle, ORACLE_ADAPTER_ABI, provider);
         const signedNavOracle = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.SignedNavOracle, ORACLE_ADAPTER_ABI, provider);
@@ -278,6 +281,7 @@ export default function ConfidentialTradingTerminal() {
 
         if (goldRes) {
           const goldPrice = parseFloat(ethers.formatUnits(goldRes.priceE8, 8));
+          freshPrices["rGOLD"] = goldPrice;
           const goldUpdatedSec = Number(goldRes.updatedAt);
           const diffSec = Math.max(0, nowSec - goldUpdatedSec);
           const minsAgo = Math.floor(diffSec / 60);
@@ -297,6 +301,7 @@ export default function ConfidentialTradingTerminal() {
 
         if (ustbRes) {
           const ustbPrice = parseFloat(ethers.formatUnits(ustbRes.priceE8, 8));
+          freshPrices["rUSTB"] = ustbPrice;
           setOracleData((prev) => ({
             ...prev,
             rUSTB: {
@@ -309,6 +314,7 @@ export default function ConfidentialTradingTerminal() {
 
         if (creRes) {
           const crePrice = parseFloat(ethers.formatUnits(creRes.priceE8, 8));
+          freshPrices["rCRE"] = crePrice;
           setOracleData((prev) => ({
             ...prev,
             rCRE: {
@@ -346,58 +352,55 @@ export default function ConfidentialTradingTerminal() {
 
       setUserPositions(parsedPositions);
 
-      // Fetch Historical PositionClosed events for Realized PnL Audit Log & Total Realized PnL
-      try {
-        const filter = engine.filters.PositionClosed(account);
-        const events = await engine.queryFilter(filter, 0, "latest").catch(() => []);
-        if (events && events.length > 0) {
-          let runningTotalPnl = 0;
-          const historyItems: ClosedHistoryItem[] = [];
+      // === Compute Realized PnL from closed positions using fresh oracle prices ===
+      // Only run as initial fallback if closedHistory is empty to prevent overwriting actual tx settlements
+      const closedPositions = parsedPositions.filter((p) => !p.isOpen);
+      if (closedPositions.length > 0) {
+        let computedTotalPnl = 0;
+        const computedHistory: ClosedHistoryItem[] = [];
 
-          for (let i = events.length - 1; i >= 0; i--) {
-            const ev = events[i] as any;
-            if (!ev.args) continue;
-            const posIdx = Number(ev.args.positionIndex);
-            const pnlScalarBps = Number(ev.args.pnlScalar);
-            const exitPriceE8 = ev.args.exitPriceE8;
-            const exitPriceFormatted = parseFloat(ethers.formatUnits(exitPriceE8, 8)).toLocaleString("en-US", { minimumFractionDigits: 2 });
-            let assetSymbol = "rGOLD";
-            if (ev.args.assetId === ASSET_IDS.rUSTB) assetSymbol = "rUSTB";
-            if (ev.args.assetId === ASSET_IDS.rCRE) assetSymbol = "rCRE";
+        for (const pos of closedPositions) {
+          const assetKey = getAssetKey(pos.assetId);
+          const currentPrice = assetKey
+            ? (freshPrices[assetKey] || oracleData[assetKey]?.priceRaw || 0)
+            : 0;
+          const entryPrice = parseFloat(ethers.formatUnits(pos.entryPriceE8, 8));
 
-            const pnlPercent = (pnlScalarBps / 1e6).toFixed(2);
-            const marginForPosition = positionMargins[posIdx] ?? 20;
-            const pnlUsdcVal = (marginForPosition * pnlScalarBps) / 1e8;
-            runningTotalPnl += pnlUsdcVal;
+          if (entryPrice > 0 && currentPrice > 0) {
+            const delta = pos.isLong
+              ? (currentPrice - entryPrice) / entryPrice
+              : (entryPrice - currentPrice) / entryPrice;
+            const pnlPercent = delta * pos.leverage * 100;
+            const marginForPosition = positionMargins[pos.index] ?? 20;
+            const pnlUsdcVal = marginForPosition * (pnlPercent / 100);
+            computedTotalPnl += pnlUsdcVal;
+            const isProfit = pnlUsdcVal >= 0;
             const pnlUsdcStr = Math.abs(pnlUsdcVal).toFixed(2);
-            const isProfit = pnlScalarBps >= 0;
 
-            historyItems.push({
-              index: posIdx,
-              assetSymbol,
-              exitPriceFormatted,
-              pnlScalarBps,
-              pnlPercentStr: `${isProfit ? "+" : ""}${pnlPercent}%`,
+            computedHistory.push({
+              index: pos.index,
+              assetSymbol: pos.assetSymbol.split(" ")[0],
+              exitPriceFormatted: currentPrice.toLocaleString("en-US", { minimumFractionDigits: 2 }),
+              pnlScalarBps: Math.round(pnlPercent * 1e4),
+              pnlPercentStr: `${isProfit ? "+" : ""}${pnlPercent.toFixed(2)}%`,
               pnlUsdcEstimate: isProfit ? `+$${pnlUsdcStr}` : `-$${pnlUsdcStr}`,
               isProfit,
-              txHash: ev.transactionHash || "",
-              closedAt: ev.args.closedAt ? new Date(Number(ev.args.closedAt) * 1000).toLocaleTimeString() : new Date().toLocaleTimeString(),
-            });
-          }
-
-          setClosedHistory(historyItems);
-          setTotalRealizedPnlUsdc(runningTotalPnl);
-          if (historyItems.length > 0) {
-            const last = historyItems[0];
-            setLastSettledPnl({
-              pnlUsdc: last.pnlUsdcEstimate,
-              pnlPercent: last.pnlPercentStr,
-              isProfit: last.isProfit,
+              txHash: "",
+              closedAt: pos.openedAt ? new Date(pos.openedAt * 1000).toLocaleTimeString() : "Settled",
             });
           }
         }
-      } catch (e) {
-        console.warn("Failed to query PositionClosed logs:", e);
+
+        if (computedHistory.length > 0) {
+          setClosedHistory((prev) => (prev.length === 0 ? computedHistory : prev));
+          setTotalRealizedPnlUsdc((prev) => (prev === 0 ? computedTotalPnl : prev));
+          const last = computedHistory[0];
+          setLastSettledPnl((prev) => (prev === null ? {
+            pnlUsdc: last.pnlUsdcEstimate,
+            pnlPercent: last.pnlPercentStr,
+            isProfit: last.isProfit,
+          } : prev));
+        }
       }
 
       // Check Auditor Status
@@ -603,7 +606,13 @@ export default function ConfidentialTradingTerminal() {
           closedAt: new Date().toLocaleTimeString(),
         };
 
-        setClosedHistory((prev) => [newHistoryItem, ...prev]);
+        setClosedHistory((prev) => {
+          const updated = [newHistoryItem, ...prev];
+          try {
+            localStorage.setItem(`realvault_history_${account.toLowerCase()}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
         setTotalRealizedPnlUsdc((prev) => prev + pnlUsdcVal);
 
         setStatusMsg(
@@ -887,29 +896,56 @@ export default function ConfidentialTradingTerminal() {
           </div>
 
           {/* Card 3: Realized PnL Session Card */}
-          <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-white border-indigo-200">
-            <div className="flex justify-between items-center text-xs text-indigo-700 font-mono">
-              <span className="flex items-center gap-1.5">
-                <DollarSign className="w-3.5 h-3.5" /> Realized Session PnL
-              </span>
-              <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-semibold">Settled</span>
-            </div>
+          {(() => {
+            let pnlValue = totalRealizedPnlUsdc;
 
-            <div className="text-2xl font-extrabold font-mono flex items-baseline gap-2">
-              <span className={totalRealizedPnlUsdc >= 0 ? "text-emerald-600" : "text-red-600"}>
-                {totalRealizedPnlUsdc >= 0 ? "+" : ""}${totalRealizedPnlUsdc.toFixed(2)}
-              </span>
-              <span className="text-xs font-normal text-zinc-500">USDC</span>
-            </div>
+            if (lastSettledPnl) {
+              const rawNum = parseFloat(String(lastSettledPnl.pnlUsdc || "0").replace(/[^\d.]/g, "")) || 0;
+              pnlValue = lastSettledPnl.isProfit ? Math.abs(rawNum) : -Math.abs(rawNum);
+            } else if (closedHistory.length > 0) {
+              const nonZeroItems = closedHistory.filter((item) => {
+                const num = parseFloat(String(item.pnlUsdcEstimate || "0").replace(/[^\d.]/g, ""));
+                return !isNaN(num) && num > 0;
+              });
+              if (nonZeroItems.length > 0) {
+                pnlValue = nonZeroItems.reduce((sum, item) => {
+                  const num = parseFloat(String(item.pnlUsdcEstimate || "0").replace(/[^\d.]/g, "")) || 0;
+                  return sum + (item.isProfit ? Math.abs(num) : -Math.abs(num));
+                }, 0);
+              }
+            }
 
-            <div className="text-[11px] font-mono text-zinc-500">
-              {lastSettledPnl ? (
-                <span className="text-emerald-700">Last Trade: {lastSettledPnl.pnlPercent} ({lastSettledPnl.pnlUsdc})</span>
-              ) : (
-                "Close a position to calculate PnL"
-              )}
-            </div>
-          </div>
+            const isPositiveTotal = pnlValue >= 0;
+            const absValStr = Math.abs(pnlValue).toFixed(2);
+
+            return (
+              <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-white border-indigo-200">
+                <div className="flex justify-between items-center text-xs text-indigo-700 font-mono">
+                  <span className="flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5" /> Realized Session PnL
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-semibold">Settled</span>
+                </div>
+
+                <div className="text-2xl font-extrabold font-mono flex items-baseline gap-2">
+                  <span className={isPositiveTotal ? "text-emerald-600" : "text-red-600"}>
+                    {isPositiveTotal ? "+" : "-"}${absValStr}
+                  </span>
+                  <span className="text-xs font-normal text-zinc-500">USDC</span>
+                </div>
+
+                <div className="text-[11px] font-mono text-zinc-500">
+                  {lastSettledPnl ? (
+                    <span className={lastSettledPnl.isProfit ? "text-emerald-700 font-semibold" : "text-rose-600 font-semibold"}>
+                      Last Trade: {lastSettledPnl.pnlPercent} ({lastSettledPnl.pnlUsdc})
+                    </span>
+                  ) : (
+                    "Close a position to calculate PnL"
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Card 4: Active Positions & Limits */}
           <div className="vault-card p-6 space-y-3 relative overflow-hidden bg-white border-zinc-200">
