@@ -5,7 +5,7 @@
 > **Deployment Target**: Ethereum Sepolia (`chainId: 11155111`)  
 > **Smart Contract SDK**: `@iexec-nox/nox-protocol-contracts@0.2.4` & `@iexec-nox/nox-confidential-contracts@0.2.4`  
 > **Client Library**: `@iexec-nox/handle@0.1.0-beta.13`  
-> **Developer Feedback**: See [`feedback.md`](file:///c:/Users/Handi/Desktop/iXEC/feedback.md) in repo root  
+> **Developer Feedback**: See [`feedback.md`](./feedback.md) in repo root  
 
 ---
 
@@ -28,8 +28,8 @@ RealVault introduces a **Confidential RWA Vault Router** that resolves this dile
 ```mermaid
 graph TD
     A[Investor / LP] -->|ECIES Encrypted Deposit| B[FundVault.sol - Nox Encrypted Handles]
-    B -->|Pooled Vault Capital| C[Aave V3 / DeFi Pool on Sepolia]
-    C -->|Real Yield Return| B
+    B -->|Pooled Vault Capital| C[Sovereign Yield Allocation rUSTB / rCRE]
+    C -->|Benchmark / NAV Yield| B
     B -->|Homomorphic Summation Nox.add| D[NAVAggregator.sol - Public Fund NAV]
     B -->|Scoped View Grant Nox.allow| E[DisclosureManager.sol - Auditor Access]
     E -->|Access Revocation| F[rotateHandles O-n Cryptographic Cleansing]
@@ -315,7 +315,7 @@ Each asset class uses a specific oracle adapter implementing the `IRwaPriceOracl
 ### Honest Data Strategy
 Chart data uses a **dual-layer rendering** approach:
 - **Solid glowing line**: Verified on-chain data points (`NavSubmitted` event logs queried from Sepolia, marked `isRealOnChain: true`).
-- **Dashed baseline line**: Synthetic seed data generated via **Reverse Geometric Brownian Motion (GBM)** with deterministic Mulberry32 PRNG, calibrated to the live oracle price.
+- **Dashed baseline line**: Historical baseline seeded using **deterministic linear trend interpolation** anchored strictly to the live on-chain oracle price (zero stochastic noise or synthetic price generation).
 
 All 8-decimal oracle values (`priceE8 / 1e8`) pass through shared utility functions (`formatOracleValue()`, `formatOracleDisplay()`) for consistent formatting across the entire frontend.
 

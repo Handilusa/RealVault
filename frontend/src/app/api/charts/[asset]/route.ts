@@ -118,9 +118,9 @@ function seededRandom(seed: number): () => number {
 }
 
 /**
- * Generates realistic baseline seed data using reverse Geometric Brownian Motion.
- * Starts from the REAL current oracle price and walks backwards in time,
- * producing a natural-looking market chart.
+ * Generates historical baseline chart points using clean, deterministic linear interpolation
+ * backwards from the REAL live oracle price anchor to the historical baseline.
+ * Avoids stochastic price generation (no Brownian motion or random walk).
  */
 function generateHistoricalSeed(
   assetKey: string,
@@ -141,48 +141,25 @@ function generateHistoricalSeed(
   const numSteps = Math.floor(rangeMs / stepMs);
   if (numSteps < 1) return [{ t: nowMs, price: currentPrice, isRealOnChain: false }];
 
-  // Deterministic PRNG seeded by asset name hash + range (so charts are stable across refreshes)
-  const seedVal = assetKey.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) * 31 + numSteps;
-  const rand = seededRandom(seedVal);
-
-  // Box-Muller transform for normal distribution
-  const normalRandom = (): number => {
-    const u1 = rand();
-    const u2 = rand();
-    return Math.sqrt(-2 * Math.log(u1 + 1e-10)) * Math.cos(2 * Math.PI * u2);
-  };
-
-  // Build prices array BACKWARDS from current price
-  // Using reverse GBM: P(t-1) = P(t) / exp(drift + vol * Z)
-  const stepsPerYear = (365.25 * 24 * 3600_000) / stepMs;
-  const dt = 1 / stepsPerYear;
-  const vol = config.annualVolatility;
-
-  // Drift: slight upward for gold (~8% annually), yield for T-bills, modest for CRE
+  // Calculate deterministic historical start price based on annual drift rate
   let annualDrift = 0.0;
-  if (config.trendType === "market") annualDrift = 0.08;
-  else if (config.trendType === "daily_yield") annualDrift = 0.051;
-  else if (config.trendType === "weekly_step") annualDrift = 0.06;
+  if (config.trendType === "market") annualDrift = 0.08;        // Gold ~8% historical trend
+  else if (config.trendType === "daily_yield") annualDrift = 0.052; // T-Bills ~5.2% annualized
+  else if (config.trendType === "weekly_step") annualDrift = 0.06;  // CRE ~6.0% annualized
 
-  const prices: number[] = new Array(numSteps + 1);
-  prices[numSteps] = currentPrice; // Last point = real oracle price
-
-  for (let i = numSteps - 1; i >= 0; i--) {
-    const Z = normalRandom();
-    const logReturn = (annualDrift - 0.5 * vol * vol) * dt + vol * Math.sqrt(dt) * Z;
-    // Walk backwards: previous price = current / exp(return)
-    prices[i] = prices[i + 1] / Math.exp(logReturn);
-  }
-
-  // Convert to ChartPoint array
+  const rangeYears = rangeMs / (365.25 * 24 * 3600_000);
+  const startPrice = currentPrice / (1 + annualDrift * rangeYears);
   const startTime = nowMs - rangeMs;
   const points: ChartPoint[] = [];
 
+  // Deterministic linear interpolation between startPrice and currentPrice
   for (let i = 0; i <= numSteps; i++) {
+    const fraction = i / numSteps;
+    const price = startPrice + fraction * (currentPrice - startPrice);
     const t = startTime + i * stepMs;
     points.push({
       t: Math.min(t, nowMs),
-      price: Number(prices[i].toFixed(4)),
+      price: Number(price.toFixed(4)),
       isRealOnChain: false,
     });
   }
