@@ -120,7 +120,6 @@ export default function Navbar() {
 
   const logoImgRef = useRef<HTMLImageElement>(null);
   const brandTextRef = useRef<HTMLSpanElement>(null);
-  const badgeRef = useRef<HTMLSpanElement>(null);
   const floatTweenRef = useRef<gsap.core.Tween | null>(null);
 
   const handleBrandHoverEnter = () => {
@@ -208,16 +207,6 @@ export default function Navbar() {
             className="text-lg font-extrabold font-display tracking-tight brand-text-gradient"
           >
             RealVault
-          </span>
-          <span
-            ref={badgeRef}
-            className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-md bg-zinc-100/90 text-zinc-600 font-medium border border-zinc-200 group-hover:border-indigo-200 group-hover:bg-indigo-50/60 group-hover:text-indigo-700 transition-all duration-300"
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-0 group-hover:opacity-75 transition-opacity duration-300"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-zinc-400 group-hover:bg-emerald-500 transition-colors duration-300"></span>
-            </span>
-            Institutional RWA
           </span>
         </Link>
 
