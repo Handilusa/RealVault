@@ -991,12 +991,18 @@ export default function ConfidentialTradingTerminal() {
                     />
                   </div>
 
-                  <div className="mt-1 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-200/60 pt-2">
-                    <span className="flex items-center gap-1 text-emerald-700">
-                      <Activity className="w-3 h-3 text-emerald-500 animate-pulse" />
-                      {oracleData.rGOLD.oracleType}
-                    </span>
-                    <span className="text-zinc-400">{oracleData.rGOLD.updatedAtText}</span>
+                  <div className="mt-1 text-[10px] font-mono text-zinc-500 border-t border-zinc-200/60 pt-2 space-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-emerald-700">
+                        <Activity className={`w-3 h-3 ${oracleData.rGOLD.isStale ? "text-amber-500" : "text-emerald-500 animate-pulse"}`} />
+                        <span>Chainlink XAU/USD</span>
+                        <span className="text-zinc-400">·</span>
+                        <span className="text-zinc-400">Sepolia Testnet</span>
+                      </span>
+                    </div>
+                    <div className={`text-[9px] ${oracleData.rGOLD.isStale ? "text-amber-600" : "text-zinc-400"}`}>
+                      Last update: {oracleData.rGOLD.updatedAtText}
+                    </div>
                   </div>
                 </button>
 

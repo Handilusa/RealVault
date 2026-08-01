@@ -58,6 +58,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     points,
     loading,
     error,
+    cadence,
     lastUpdatedText,
     percentageChange,
     currentPrice,
@@ -108,12 +109,12 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
             <span
               className={`text-xs px-2 py-0.5 rounded-md border font-semibold ${theme.badge}`}
             >
-              Oracle Truth Feed
+              {assetKey === "RGOLD" ? "Chainlink XAU/USD · Sepolia" : "Oracle Truth Feed"}
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1 text-xs text-zinc-500">
             <Clock className="w-3.5 h-3.5 text-zinc-400" />
-            <span>{lastUpdatedText}</span>
+            <span>Updated {lastUpdatedText} ({cadence})</span>
           </div>
         </div>
 
@@ -138,7 +139,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
           <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <span>
             <strong className="font-semibold">Public & Verified On-Chain:</strong> Chart reflects real{" "}
-            <code className="bg-emerald-100 text-emerald-900 px-1 py-0.5 rounded font-mono text-[11px]">NavSubmitted</code> events & Chainlink oracle rounds used for engine settlement.
+            <code className="bg-emerald-100 text-emerald-900 px-1 py-0.5 rounded font-mono text-[11px]">Chainlink Oracle</code> rounds on Sepolia used for engine settlement.
           </span>
         </div>
         <div className="flex items-center gap-2.5 bg-indigo-50/80 border border-indigo-200/80 rounded-xl p-3 text-indigo-950">

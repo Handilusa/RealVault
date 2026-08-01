@@ -25,6 +25,7 @@ import {
   DISCLOSURE_MANAGER_ABI,
   REBALANCER_ABI,
   MOCK_USDC_ABI,
+  RWA_PERP_ENGINE_ABI,
   RWA_PORTFOLIO_ASSETS,
 } from "@/lib/contracts";
 import { ensureSepoliaNetwork, getReadOnlyProvider, getBrowserSignerProvider, parseWeb3Error } from "@/lib/web3";
@@ -106,13 +107,13 @@ export default function RealVaultApp() {
     isInvestorOnChain: false,
     isDecrypted: false,
     decryptedBalance: null as string | null,
+    decryptedNumeric: null as number | null,
+    activeMargin: 0,
     shadowBalance: 0, // tracked locally - cumulative deposits minus withdrawals
     statusMsg: null as string | null,
     txHash: null as string | null,
     loaded: false,
   });
-
-
 
   // Reset sandbox state and decryption immediately whenever connected wallet (account) changes
   useEffect(() => {
@@ -126,6 +127,8 @@ export default function RealVaultApp() {
         isInvestorOnChain: false,
         isDecrypted: false,
         decryptedBalance: null,
+        decryptedNumeric: null,
+        activeMargin: 0,
         shadowBalance: 0,
         statusMsg: null,
         txHash: null,
@@ -308,18 +311,37 @@ export default function RealVaultApp() {
       const provider = await getReadOnlyProvider();
       const vault = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.FundVault, FUND_VAULT_ABI, provider);
       const usdc = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.MockUSDC, MOCK_USDC_ABI, provider);
+      const engine = new ethers.Contract(DEPLOYED_ADDRESSES.contracts.RwaPerpEngine, RWA_PERP_ENGINE_ABI, provider);
 
-      const [isInv, rawHandle, bal] = await Promise.all([
-        vault.isInvestor(userAddr),
-        vault.getPosition(userAddr),
-        usdc.balanceOf(userAddr),
+      const [isInv, rawHandle, bal, rawPositions] = await Promise.all([
+        vault.isInvestor(userAddr).catch(() => false),
+        vault.getPosition(userAddr).catch(() => null),
+        usdc.balanceOf(userAddr).catch(() => 0n),
+        engine.getPositions(userAddr).catch(() => []),
       ]);
+
+      let savedMargins: Record<number, number> = {};
+      try {
+        const raw = localStorage.getItem(`realvault_position_margins_${userAddr}`);
+        if (raw) savedMargins = JSON.parse(raw);
+      } catch {}
+
+      let openMarginTotal = 0;
+      if (Array.isArray(rawPositions)) {
+        rawPositions.forEach((pos: any, idx: number) => {
+          if (pos.isOpen) {
+            const m = savedMargins[idx] ?? 20;
+            openMarginTotal += m;
+          }
+        });
+      }
 
       setSandboxState((prev) => ({
         ...prev,
         isInvestorOnChain: isInv as boolean,
         positionHandle: toHexHandle(rawHandle),
         mUsdcBalance: ethers.formatUnits(bal as bigint, 18),
+        activeMargin: openMarginTotal,
         loaded: true,
       }));
     } catch {
@@ -589,6 +611,7 @@ export default function RealVaultApp() {
             setSandboxState((prev) => ({
               ...prev,
               isDecrypted: true,
+              decryptedNumeric: valNum,
               decryptedBalance: formatted,
               statusMsg: `Nox TEE Handle Decrypted: ${formatted}`,
             }));
@@ -1492,7 +1515,9 @@ export default function RealVaultApp() {
 
                 <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50 space-y-3">
                   <div>
-                    <span className="text-[11px] font-mono uppercase text-zinc-400 block mb-1">Position Balance</span>
+                    <span className="text-[11px] font-mono uppercase text-zinc-400 block mb-1">
+                      {sandboxState.activeMargin > 0 ? "Vault Position Balance (Free)" : "Position Balance"}
+                    </span>
                     <div className="text-xl font-bold font-data text-zinc-900">
                       <RedactionBar
                         isRevealed={sandboxState.isDecrypted}
@@ -1500,6 +1525,25 @@ export default function RealVaultApp() {
                       />
                     </div>
                   </div>
+
+                  {sandboxState.activeMargin > 0 && (
+                    <div className="pt-2.5 border-t border-zinc-200/80 space-y-1.5 text-xs font-mono">
+                      <div className="flex justify-between items-center text-zinc-600">
+                        <span>Active Locked Margin (Perp Engine):</span>
+                        <span className="font-semibold text-indigo-600">
+                          +{sandboxState.activeMargin.toFixed(2)} mUSDC
+                        </span>
+                      </div>
+                      {sandboxState.isDecrypted && (
+                        <div className="flex justify-between items-center text-zinc-900 font-bold pt-1 border-t border-dashed border-zinc-200">
+                          <span>Total Net Equity:</span>
+                          <span className="text-emerald-600 font-data text-sm">
+                            {((sandboxState.decryptedNumeric ?? parseFloat((sandboxState.decryptedBalance || "0").replace(/[^0-9.]/g, "") || "0")) + sandboxState.activeMargin).toFixed(2)} mUSDC
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs font-mono">
